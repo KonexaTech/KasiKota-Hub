@@ -16,14 +16,17 @@ const orders=collections.orders;
 const applications=collections.shopApplications;
 const unmappedOwners=shops.filter(s=>!s.ownerUid&&!s.ownerSubject);
 const missingShopOrders=orders.filter(o=>!o.shopId);
+const shopIds=new Set(shops.map(s=>s.id||s.documentId).filter(Boolean).map(String));
+const orphanShopOrders=orders.filter(o=>o.shopId&&!shopIds.has(String(o.shopId)));
 const orderIds=new Set(orders.map(o=>o.id||o.documentId));
 const duplicateOrderNumbers=orders.map(o=>o.orderNumber).filter((n,i,a)=>n&&a.indexOf(n)!==i);
-if(unmappedOwners.length||missingShopOrders.length||duplicateOrderNumbers.length)failed=true;
+if(unmappedOwners.length||missingShopOrders.length||orphanShopOrders.length||duplicateOrderNumbers.length)failed=true;
 const summary={
   shops:shops.length,applications:applications.length,orders:orders.length,
   approvedShops:shops.filter(s=>s.approved===true||s.status==="approved").length,
   missingOwnerIdentity:unmappedOwners.length,
   missingOrderShopReference:missingShopOrders.length,
+  orphanOrderShopReference:orphanShopOrders.length,
   duplicateDocumentIds:duplicateIds.length,
   duplicateOrderNumbers:duplicateOrderNumbers.length,
   orderRecordsWithItems:orders.filter(o=>Array.isArray(o.items)&&o.items.length>0).length,
