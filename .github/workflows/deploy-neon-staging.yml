@@ -1,0 +1,33 @@
+name: Deploy Neon-only staging Worker
+on:
+  workflow_dispatch:
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    runs-on: ubuntu-latest
+    environment: neon-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Worker source
+        run: |
+          node --check worker/src/index.js
+          node --check worker/src/neon-auth.js
+          node --check worker/src/neon-api.js
+          node --test tests/neon-security-static.test.cjs
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm install --no-audit --no-fund
+      - name: Deploy development Worker only
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "74fdd987dfadfdbb7322d9fc7f705499"
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing staging Cloudflare token"; exit 1; }
+          npx wrangler deploy
+      - name: Verify Neon staging health
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 https://kota-connect-api-dev.siboniisozulu.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!x.ok||x.backend!=="neon"||!x.authConfigured)process.exit(1);console.log("Neon staging health passed")})'
