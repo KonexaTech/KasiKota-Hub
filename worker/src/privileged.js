@@ -25,6 +25,7 @@ async function googleRequest(env,url,options={}){
 }
 function field(doc,name){const v=doc.fields?.[name];return v?.stringValue??v?.integerValue??null}
 const uidPattern=/^[A-Za-z0-9_-]{8,128}$/;
+const firestoreIdPattern=/^[A-Za-z0-9_-]{1,1500}$/;
 export async function privilegedRoute(request,env,verify,withDb){
   const path=new URL(request.url).pathname;
   if(!["/api/admin/approve","/api/admin/revoke","/api/notifications/register","/api/notifications/order-created"].includes(path))return null;
@@ -50,10 +51,10 @@ export async function privilegedRoute(request,env,verify,withDb){
     await withDb(env,db=>db.query("INSERT INTO kc_push_tokens (token,owner_subject,updated_at) VALUES ($1,$2,now()) ON CONFLICT(token) DO UPDATE SET owner_subject=EXCLUDED.owner_subject,updated_at=now()",[token,uid]));
     return reply({ok:true});
   }
-  const id=String(data.orderId||"");if(!uidPattern.test(id))return reply({error:"Invalid order ID"},400);
+  const id=String(data.orderId||"");if(!firestoreIdPattern.test(id))return reply({error:"Invalid order ID"},400);
   const doc=await googleRequest(env,"https://firestore.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/databases/(default)/documents/orders/"+encodeURIComponent(id));
   if(field(doc,"customerUid")!==uid)return reply({error:"Order owner mismatch"},403);
-  const ownerUid=field(doc,"ownerUid"),shopId=field(doc,"shopId");if(!ownerUid||!shopId||!uidPattern.test(shopId)||field(doc,"orderStatus")!=="pending")return reply({error:"Invalid order notification state"},422);
+  const ownerUid=field(doc,"ownerUid"),shopId=field(doc,"shopId");if(!ownerUid||!shopId||!firestoreIdPattern.test(shopId)||field(doc,"orderStatus")!=="pending")return reply({error:"Invalid order notification state"},422);
   const shop=await googleRequest(env,"https://firestore.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/databases/(default)/documents/shops/"+encodeURIComponent(shopId));
   if(field(shop,"ownerUid")!==ownerUid||field(shop,"status")!=="approved")return reply({error:"Shop ownership mismatch"},403);
   const result=await withDb(env,async db=>{
