@@ -12,3 +12,4 @@ test("Order and history reads verify customer, owner or admin",()=>{assert.match
 test("Notifications are scoped to authenticated recipient",()=>{assert.match(api,/WHERE recipient_subject=\$1/);assert.match(api,/read_at=COALESCE\(read_at,now\(\)\)/)});
 test("Shop approval is database-admin-gated",()=>{assert.match(api,/path==="\/api\/admin\/shop-applications"/);assert.match(api,/application\.status!=="pending"/)});
 test("Staging page has no Firebase SDK dependency",()=>{assert.doesNotMatch(page,/https?:[^"\s]+firebase[^"\s]+\.js|from\s+["\x27][^"\x27]*firebase/i);assert.match(page,/createAuthClient/)});
+test("Order line items require ownership and use snapshot prices",()=>{assert.match(api,/const details=\/\^/);assert.match(api,/order\.customer_subject!==subject&&order\.owner_subject!==subject/);assert.match(api,/SELECT item_name,unit_price_cents,quantity FROM kc_order_items/)});
