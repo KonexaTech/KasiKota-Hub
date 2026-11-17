@@ -236,6 +236,37 @@ export default {
         `));
         return json({ orders: result.rows }, 200, headers);
       }
+      const statusMatch = /^\/api\/owner\/orders\/([0-9a-f-]{36})\/status$/.exec(path);
+      if (request.method === "PATCH" && statusMatch) {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        const next = data?.status;
+        const allowed = ["accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
+        const note = typeof data?.note === "string" ? data.note.trim() : "";
+        if (!allowed.includes(next) || note.length > 500) return json({ error: "Invalid status" }, 400, headers);
+        const result = await withDb(env, async db => {
+          await db.query("BEGIN");
+          try {
+            const existing = await db.query(
+              "SELECT o.id,o.status,o.customer_subject,o.order_number FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND s.owner_subject=$2 FOR UPDATE OF o",
+              [statusMatch[1],uid]
+            );
+            if (!existing.rowCount) { await db.query("ROLLBACK"); return { status:404,error:"Not found" }; }
+            const current = existing.rows[0];
+            const transitions = { pending:["accepted","rejected","delayed"],delayed:["accepted","rejected"],accepted:["preparing","rejected","delayed"],preparing:["ready_for_collection","out_for_delivery","delayed"],ready_for_collection:["completed"],out_for_delivery:["completed"] };
+            if (!transitions[current.status]?.includes(next)) { await db.query("ROLLBACK"); return { status:409,error:"Invalid status transition" }; }
+            await db.query("UPDATE kc_orders SET status=$1,owner_note=$2,updated_at=now() WHERE id=$3",[next,note,current.id]);
+            await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role,note) VALUES ($1,$2,$3,$4,'owner',$5)",[current.id,current.status,next,uid,note]);
+            await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES ($1,$2,'order_status',$3,$4)",
+              [current.customer_subject,current.id,"Order "+current.order_number+" updated","Status: "+next]);
+            await db.query("COMMIT");
+            return { order: { id:current.id,status:next } };
+          } catch (error) { await db.query("ROLLBACK").catch(() => {}); throw error; }
+        });
+        return json(result.status ? { error:result.error } : result,result.status || 200,headers);
+      }
       if (request.method === "GET" && path === "/api/owner/orders") {
         const uid = await verifiedUser(request, env);
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
