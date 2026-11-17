@@ -73,7 +73,8 @@ assert.equal(rejectedTrack.order.history.at(-1).new_status,"rejected","Rejected 
 
 const adminOrders=expect(await request("/api/admin/orders",env.admin),200,"Admin can monitor all orders");
 const adminOrder=adminOrders.orders.find(o=>o.id===orderId);
-assert.ok(adminOrder,"Admin can see the completed order");\nassert.ok(adminOrders.orders.some(o=>o.id===rejectedId&&o.status==="rejected"),"Admin can see rejected orders too");
+assert.ok(adminOrder,"Admin can see the completed order");
+assert.ok(adminOrders.orders.some(o=>o.id===rejectedId&&o.status==="rejected"),"Admin can see rejected orders too");
 assert.equal(adminOrder.status,"completed","Admin sees final order status");
 assert.ok(Array.isArray(adminOrder.items)&&adminOrder.items.length===1,"Admin sees line-item details");
 assert.ok(Array.isArray(adminOrder.history)&&adminOrder.history.length>=5,"Admin sees full status history");
