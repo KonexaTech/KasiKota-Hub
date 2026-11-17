@@ -34,3 +34,12 @@ Do not use browser-provided `subject`, `role`, `ownerUid`, or `price` as authori
 - Firebase historical records have not been exported; migrating accounts requires re-enrollment/password reset rather than copying Firebase password hashes.
 - Android native project files are not present in the repository root; no installable APK or native closed-app push can be claimed. FCM is a push transport, distinct from Firebase database/Auth; completely eliminating all Firebase/Google push dependencies requires a separate Android notification transport strategy, with device compatibility limitations.
 - Production remains untouched; do not merge or retire Firebase until user data is reconciled and acceptance tests pass.
+
+## Isolated role screens and staging deployment gate
+- `neon-customer.html`, `neon-owner.html`, `neon-admin.html` use `neon-app.js` and Neon Auth. They are separate staging replacements, NOT yet a conversion of the existing production HTML pages.
+- Customer staging supports multi-item cart, idempotent checkout, history and tracking; owner supports applications, menu editing and order statuses; admin supports applications and order oversight.
+- Notifications are retrieved from Neon while the browser is open (20-second polling). **This is not background Android push.** A native push delivery provider and physical-device acceptance are still required.
+- `worker/wrangler.jsonc` enables Neon-only mode only when the development Worker is deployed from this branch. The currently deployed Cloudflare Worker was found without `NEON_ONLY_MODE`; do not assume the new endpoints are live.
+- `.github/workflows/deploy-neon-staging.yml` provides a manual staging deployment with an environment gate, Cloudflare API token secret, and live health check. It has not been run.
+- `scripts/audit-firebase-export.mjs` inventories a provided Firebase export and checks missing identities/duplicate IDs before migration. **No actual Firebase export is available**, so no historical data migration or reconciliation has occurred.
+- The production Firebase pages and production database remain unchanged. Public testing requires live staging end-to-end verification and Android notification acceptance.
