@@ -43,4 +43,7 @@ bind("orders",async()=>out(await api("/api/admin/orders")));
 }
 bind("notifications",async()=>out(await api("/api/notifications")));
 bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
-showIdentity().catch(()=>{});
+async function pollNotifications(){if(document.visibilityState!=="visible")return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
+showIdentity().then(pollNotifications).catch(()=>{});
+setInterval(pollNotifications,20000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")pollNotifications()});
