@@ -1,0 +1,49 @@
+name: Build Kota Connect Android staging APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/neon-only-api-auth
+    paths:
+      - 'neon-staging.html'
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'scripts/**'
+      - '.github/workflows/build-android-staging.yml'
+      - 'worker/src/**'
+      - 'worker/wrangler.jsonc'
+permissions:
+  contents: read
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/neon-only-api-auth
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Prepare Android web app
+        run: npm run build:android
+      - name: Add Android platform
+        run: npx cap add android
+      - name: Sync Android project
+        run: npx cap sync android
+      - name: Build debug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kota-connect-neon-staging-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
