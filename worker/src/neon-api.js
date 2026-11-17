@@ -45,9 +45,10 @@ export async function neonApi(request,env,withDb){
   if(method==="GET"&&history&&uuid.test(history[1])){const order=await withDb(env,async db=>(await db.query("SELECT o.customer_subject,s.owner_subject FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1",[history[1]])).rows[0]);if(!order)return json({error:"Order not found"},404);if(order.customer_subject!==subject&&order.owner_subject!==subject&&!await isNeonAdmin(env,withDb,subject))return json({error:"Forbidden"},403);return json({events:await withDb(env,async db=>(await db.query("SELECT previous_status,new_status,actor_role,note,created_at FROM kc_order_status_events WHERE order_id=$1 ORDER BY created_at,id LIMIT 200",[history[1]])).rows)})}
   if(method==="POST"&&path==="/api/orders"){
     const data=await readBody(request);
-    if(!data||!uuid.test(data.shopId||"")||!Array.isArray(data.items)||!data.items.length||data.items.length>30||!["pickup","delivery"].includes(data.fulfillmentType)||typeof data.customerName!=="string"||data.customerName.trim().length<2||data.customerName.length>100||typeof data.customerPhone!=="string"||data.customerPhone.length>30||typeof data.area!=="string"||data.area.length>160||data.fulfillmentType==="delivery"&&(!data.deliveryAddress||data.deliveryAddress.length>300))return json({error:"Invalid checkout"},400);
+    if(!data||!uuid.test(data.requestId||"")||!uuid.test(data.shopId||"")||!Array.isArray(data.items)||!data.items.length||data.items.length>30||!["pickup","delivery"].includes(data.fulfillmentType)||typeof data.customerName!=="string"||data.customerName.trim().length<2||data.customerName.length>100||typeof data.customerPhone!=="string"||data.customerPhone.length>30||typeof data.area!=="string"||data.area.length>160||data.fulfillmentType==="delivery"&&(!data.deliveryAddress||data.deliveryAddress.length>300))return json({error:"Invalid checkout"},400);
     if(data.items.some(x=>!uuid.test(x.itemId||"")||!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>50))return json({error:"Invalid items"},400);
     const result=await withDb(env,async db=>{await db.query("BEGIN");try{
+      const existing=(await db.query("SELECT id,order_number,status,total_cents,shop_id FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(existing){if(existing.shop_id!==data.shopId)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:existing,replayed:true}}
       const shop=(await db.query("SELECT id,owner_subject FROM kc_shops WHERE id=$1 AND approved=true",[data.shopId])).rows[0];if(!shop)throw Error("SHOP");
       const ids=data.items.map(x=>x.itemId);if(new Set(ids).size!==ids.length)throw Error("ITEMS");
       const rows=(await db.query("SELECT id,name,price_cents FROM kc_menu_items WHERE shop_id=$1 AND available=true AND id=ANY($2::uuid[])",[data.shopId,ids])).rows;
@@ -56,13 +57,14 @@ export async function neonApi(request,env,withDb){
       if(!Number.isSafeInteger(subtotal)||subtotal>100000000)throw Error("ITEMS");
       const delivery=data.fulfillmentType==="delivery"?1500:0;
       const number="KC-"+crypto.randomUUID().slice(0,12).toUpperCase();
-      const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery])).rows[0];
+      const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,data.requestId])).rows[0];
+      if(!order){const replay=(await db.query("SELECT id,order_number,status,total_cents,shop_id FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(!replay||replay.shop_id!==data.shopId)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:replay,replayed:true}}
       for(const item of data.items){const p=prices.get(item.itemId);await db.query("INSERT INTO kc_order_items(order_id,menu_item_id,item_name,unit_price_cents,quantity) VALUES($1,$2,$3,$4,$5)",[order.id,p.id,p.name,p.price_cents,item.quantity])}
       await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role) VALUES($1,NULL,'pending',$2,'customer')",[order.id,subject]);
       await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES($1,$2,'new_order','New Kota Connect order','A customer placed an order')",[shop.owner_subject,order.id]);
-      await db.query("COMMIT");return order;
+      await db.query("COMMIT");return {order,replayed:false};
     }catch(e){await db.query("ROLLBACK");throw e}});
-    return json({order:result},201);
+    return json(result,result.replayed?200:201);
   }
   const statusRoute=/^\/api\/owner\/orders\/([0-9a-f-]{36})\/status$/.exec(path);
   if(method==="PATCH"&&statusRoute&&uuid.test(statusRoute[1])){
