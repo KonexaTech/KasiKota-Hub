@@ -106,6 +106,48 @@ export default {
           shops
         }, 200, headers);
       }
+      if (request.method === "POST" && path === "/api/shop-applications") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        const field = (name, max) => typeof data?.[name] === "string" ? data[name].trim().slice(0, max + 1) : "";
+        const owner = field("owner_name", 120), shop = field("shop_name", 160);
+        const phone = field("phone", 30), area = field("area", 120), address = field("address", 300);
+        const description = field("description", 1500);
+        if (owner.length < 2 || owner.length > 120 || shop.length < 2 || shop.length > 160 ||
+            !phone || phone.length > 30 || !area || area.length > 120 ||
+            !address || address.length > 300 || description.length > 1500)
+          return json({ error: "Invalid application details" }, 400, headers);
+        const result = await withDb(env, db => db.query(
+          "INSERT INTO kc_shop_applications(applicant_subject,owner_name,shop_name,phone,area,address,description) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,status,created_at",
+          [uid,owner,shop,phone,area,address,description]
+        ));
+        return json({ application: result.rows[0] }, 201, headers);
+      }
+      if (request.method === "GET" && path === "/api/my/shop-applications") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "SELECT id,shop_name,area,status,created_at,reviewed_at FROM kc_shop_applications WHERE applicant_subject=$1 ORDER BY created_at DESC LIMIT 100", [uid]
+        ));
+        return json({ applications: result.rows }, 200, headers);
+      }
+      if (request.method === "GET" && path === "/api/admin/shop-applications") {
+        if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "SELECT id,applicant_subject,owner_name,shop_name,phone,area,address,description,status,created_at FROM kc_shop_applications ORDER BY created_at DESC LIMIT 200"
+        ));
+        return json({ applications: result.rows }, 200, headers);
+      }
+      if (request.method === "GET" && path === "/api/notifications") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "SELECT id,order_id,kind,title,body,read_at,created_at FROM kc_notifications WHERE recipient_subject=$1 ORDER BY created_at DESC LIMIT 100", [uid]
+        ));
+        return json({ notifications: result.rows }, 200, headers);
+      }
       if (request.method === "GET" && path === "/api/admin/orders") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
