@@ -3,8 +3,8 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 /** Neon Auth JWT verification. Never trust a user ID or role from request JSON. */
 const jwksCache = new Map();
 export async function verifiedNeonSubject(request, env) {
-  const token = /^Bearer (\\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
-  const base = (env.NEON_AUTH_URL || "").replace(/\\/$/, "");
+  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
+  const base = (env.NEON_AUTH_URL || "").replace(/\/$/, "");
   if (!token || !base || !base.startsWith("https://")) return null;
   try {
     const jwksUrl = new URL(base + "/.well-known/jwks.json");
