@@ -1,6 +1,9 @@
 name: Build Neon staging Android APK
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/neon-only-cutover
 jobs:
   android-debug:
     if: github.ref == 'refs/heads/feature/neon-only-cutover'
