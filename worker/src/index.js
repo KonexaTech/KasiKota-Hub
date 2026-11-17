@@ -148,6 +148,17 @@ export default {
         ));
         return json({ notifications: result.rows }, 200, headers);
       }
+      const notificationRead = /^\/api\/notifications\/([0-9a-f-]{36})\/read$/.exec(path);
+      if (request.method === "PATCH" && notificationRead) {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "UPDATE kc_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_subject=$2 RETURNING id,read_at",
+          [notificationRead[1],uid]
+        ));
+        if (!result.rowCount) return json({ error: "Not found" }, 404, headers);
+        return json({ notification: result.rows[0] }, 200, headers);
+      }
       if (request.method === "GET" && path === "/api/admin/orders") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
