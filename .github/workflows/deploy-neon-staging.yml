@@ -42,6 +42,6 @@ jobs:
       - name: Configure Neon development database secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: 74fdd987dfadfdbb7322d9fc7f705499
           NEON_DB: ${{ secrets.KOTA_NEON_DEV_DATABASE_URL }}
         run: printf '%s' "$NEON_DB" | npx wrangler secret put DATABASE_URL
