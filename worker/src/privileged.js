@@ -62,7 +62,7 @@ export async function privilegedRoute(request,env,verify,withDb){
     let sent=0;
     for(const row of tokens){
       try{
-        await googleRequest(env,"https://fcm.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/messages:send",{method:"POST",body:JSON.stringify({message:{token:row.token,notification:{title:"New Kota Connect order",body:"A customer placed an order. Open your owner dashboard."},data:{type:"new_order",orderId:id},android:{priority:"high"}}})});sent++;
+        await googleRequest(env,"https://fcm.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/messages:send",{method:"POST",body:JSON.stringify({message:{token:row.token,notification:{title:"New Kota Connect order",body:"A customer placed an order. Open your owner dashboard."},data:{type:"new_order",orderId:id},android:{priority:"high"},webpush:{fcm_options:{link:"https://siboniisozulu-alt.github.io/KasiKota-Hub/kota-connect-owners-dashboard-fixed.html"}}}})});sent++;
       }catch(e){console.error("FCM send failed",e.message)}
     }
     if(!sent)await db.query("DELETE FROM kc_push_dispatch WHERE order_id=$1",[id]);
