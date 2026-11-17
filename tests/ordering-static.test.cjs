@@ -8,12 +8,15 @@ const checks=[
 ["checkout opens tracking",customer.includes('order-tracking.html?id=')],
 ["owner scoped live orders",owner.includes('onSnapshot(query(collection(db,"orders"),where("ownerUid","==",uid))')],
 ["owner notification banner",owner.includes('id="new-order-alert"')],
+["owner opt-in browser alerts",owner.includes("Notification.requestPermission()")&&owner.includes("new Notification(")],
 ["owner status updates",owner.includes('updateDoc(')],
 ["admin registration",admin.includes('createUserWithEmailAndPassword')],
 ["admin UID gate",admin.includes('user.uid !== ADMIN_UID')],
 ["admin live order monitoring",admin.includes('stopAdminOrders=onSnapshot')],
 ["tracking document listener",tracking.includes('onSnapshot(doc(db,"orders",id)')],
 ["tracking customer check",tracking.includes('customerUid!==auth.currentUser?.uid')],
+["tracking clears inaccessible order",tracking.includes("function clearTracking()")],
+["tracking respects fulfillment type",tracking.includes("visibleSteps=steps.filter")],
 ["premium styles on all pages",[customer,owner,admin,tracking].every(x=>x.includes('href="premium.css"'))],
 ["admin valid document start",admin.trimStart().startsWith("<!doctype html>")]
 ];
