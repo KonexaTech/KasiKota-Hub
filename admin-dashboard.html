@@ -165,6 +165,7 @@ footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; 
     <button id="login-button" type="submit">Sign in</button>
   </form>
   <p id="login-message" role="status" aria-live="polite"></p>
+  <details><summary>Create an administrator account</summary><p class="notice">Registration creates a Firebase account only. Administrator access requires separate approval and secure server-side provisioning. New accounts cannot approve themselves or access admin records.</p><form id="admin-register-form"><label class="field"><span>Email</span><input id="admin-register-email" type="email" autocomplete="email" required></label><label class="field"><span>Password (at least 12 characters)</span><input id="admin-register-password" type="password" minlength="12" autocomplete="new-password" required></label><button type="submit" id="admin-register-button">Create account (pending approval)</button></form><p id="admin-register-message" role="status" aria-live="polite"></p></details>
 </section>
 
 <section id="dashboard" class="hidden">
@@ -289,6 +290,7 @@ import {
 import {
   getAuth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -297,6 +299,7 @@ import {
   getFirestore,
   collection,
   getDocs,
+  onSnapshot,
   doc,
   addDoc,
   updateDoc,
@@ -330,6 +333,7 @@ let appsData = [];
 let shopsData = [];
 let ordersData = [];
 let busy = false;
+let stopAdminOrders = null;
 
 const text = value =>
   value == null || value === "" ? "—" : String(value);
@@ -676,7 +680,9 @@ async function loadData() {
     renderOrders();
     renderCommission();
 
-    message("page-message", "Data refreshed successfully.", "success");
+    if(stopAdminOrders)stopAdminOrders();
+    stopAdminOrders=onSnapshot(collection(db,"orders"),snapshot=>{if(auth.currentUser?.uid!==ADMIN_UID)return;ordersData=snapshot.docs.map(d=>({id:d.id,data:d.data()}));$("count-orders").textContent=String(ordersData.length);renderOrders();renderCommission();message("page-message","Live order monitoring connected.","success")},error=>message("page-message","Live orders unavailable: "+error.message,"error"));
+    message("page-message", "Data refreshed successfully. Live order monitoring enabled.", "success");
   } catch (error) {
     message("page-message", errorText(error), "error");
   }
@@ -894,10 +900,13 @@ $("neon-commission-refresh").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("admin-register-form").addEventListener("submit",async event=>{event.preventDefault();const email=$("admin-register-email").value.trim(),password=$("admin-register-password").value,button=$("admin-register-button");button.disabled=true;try{await createUserWithEmailAndPassword(auth,email,password);message("admin-register-message","Account created, but administrator access is not granted. Ask the existing administrator to approve and provision this account securely.","success");await signOut(auth)}catch(error){message("admin-register-message",errorText(error),"error")}finally{button.disabled=false}});
+
 /* VERIFY AUTHENTICATED ADMIN */
 
 onAuthStateChanged(auth, user => {
   if (!user) {
+    if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
     message("login-message", "");
@@ -905,6 +914,7 @@ onAuthStateChanged(auth, user => {
   }
 
   if (user.uid !== ADMIN_UID) {
+    if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
 
