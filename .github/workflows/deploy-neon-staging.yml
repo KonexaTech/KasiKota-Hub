@@ -1,6 +1,12 @@
 name: Deploy Kota Connect Neon staging API
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/neon-only-api-auth
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-neon-staging.yml'
 permissions:
   contents: read
 jobs:
