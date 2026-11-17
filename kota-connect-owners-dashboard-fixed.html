@@ -147,7 +147,7 @@ payments directly. Orders continue as normal.
 <p class="muted">
 Orders appear live while this dashboard is open. Save a status update to notify the customer in their tracking screen. Only mark Completed after fulfillment.
 </p>
-<p id="orders-message" class="status" role="status">Loading orders…</p>
+<p id="orders-message" class="status" role="status">Loading orders…</p><div id="new-order-alert" role="status" aria-live="polite" class="notice hidden"></div>
 <div id="orders-list"></div>
 </section>
 
@@ -654,7 +654,7 @@ function createOrderCard(orderDoc) {
   return card;
 }
 
-let stopOrders=null;
+let stopOrders=null;let knownOrderIds=null;
 function loadOrders(){
  if(!currentUser||!selectedShop)return;
  if(stopOrders){stopOrders();stopOrders=null}
@@ -663,7 +663,7 @@ function loadOrders(){
  stopOrders=onSnapshot(query(collection(db,"orders"),where("ownerUid","==",uid)),snapshot=>{
   if(!currentUser||currentUser.uid!==uid||!selectedShop||selectedShop.id!==shopId)return;
   const orders=snapshot.docs.map(d=>({id:d.id,data:d.data()})).filter(x=>x.data.ownerUid===uid&&x.data.shopId===shopId).sort((a,b)=>(b.data.createdAt?.toMillis?.()||0)-(a.data.createdAt?.toMillis?.()||0));
-  list.replaceChildren();orders.forEach(item=>list.appendChild(createOrderCard(item)));
+  const pendingNew=knownOrderIds?orders.filter(x=>!knownOrderIds.has(x.id)&&x.data.orderStatus==="pending"):[];knownOrderIds=new Set(orders.map(x=>x.id));const alertBox=$("new-order-alert");if(pendingNew.length){alertBox.textContent="🔔 "+pendingNew.length+" new customer order(s) received!";alertBox.classList.remove("hidden");document.title="🔔 New order | Kota Connect Owner";}else if(!orders.some(x=>x.data.orderStatus==="pending")){alertBox.classList.add("hidden");document.title="Kota Connect | Owners Dashboard"}list.replaceChildren();orders.forEach(item=>list.appendChild(createOrderCard(item)));
   message("orders-message",orders.length?orders.length+" live order(s)":"No orders for this shop yet.");
  },error=>message("orders-message","Live orders unavailable: "+(error.code||error.message),true));
 }
@@ -673,7 +673,7 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
 
   if (!user) {
-    if(stopOrders){stopOrders();stopOrders=null}
+    if(stopOrders){stopOrders();stopOrders=null}knownOrderIds=null;
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
     $("orders-list").replaceChildren();
