@@ -25,3 +25,12 @@ Neon project `young-bird-19918639`, development branch `kota-connect-development
 
 ## Security
 Do not use browser-provided `subject`, `role`, `ownerUid`, or `price` as authorization facts. The current Neon-only API uses server-verified identity and database ownership for the endpoints it implements. Remaining endpoints require equivalent checks.
+
+## November 17 progress
+- Added checkout idempotency using `(customer_subject, client_request_id)` unique partial index; applied **only** to the Neon development branch. Caller must send `requestId` UUID; staging client retains the key across retries.
+- GitHub Actions ordering checks run #79 passed after idempotency implementation.
+- The live customer, owner and admin HTML files still contain Firebase code and have NOT been cut over.
+- A standalone `neon-staging.html` exists but a deployed staging Worker and real authenticated end-to-end checks remain outstanding.
+- Firebase historical records have not been exported; migrating accounts requires re-enrollment/password reset rather than copying Firebase password hashes.
+- Android native project files are not present in the repository root; no installable APK or native closed-app push can be claimed. FCM is a push transport, distinct from Firebase database/Auth; completely eliminating all Firebase/Google push dependencies requires a separate Android notification transport strategy, with device compatibility limitations.
+- Production remains untouched; do not merge or retire Firebase until user data is reconciled and acceptance tests pass.
