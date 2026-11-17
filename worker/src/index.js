@@ -159,6 +159,71 @@ export default {
         if (!result.rowCount) return json({ error: "Not found" }, 404, headers);
         return json({ notification: result.rows[0] }, 200, headers);
       }
+      if (request.method === "POST" && path === "/api/orders") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const items = data?.items;
+        const customerName = typeof data?.customer_name === "string" ? data.customer_name.trim() : "";
+        const customerPhone = typeof data?.customer_phone === "string" ? data.customer_phone.trim() : "";
+        const area = typeof data?.area === "string" ? data.area.trim() : "";
+        const deliveryAddress = typeof data?.delivery_address === "string" ? data.delivery_address.trim() : "";
+        const fulfillment = data?.fulfillment_type;
+        if (!uuid.test(data?.shop_id || "") || !Array.isArray(items) || items.length < 1 || items.length > 25 ||
+            items.some(i => !uuid.test(i?.menu_item_id || "") || !Number.isInteger(i.quantity) || i.quantity < 1 || i.quantity > 50) ||
+            new Set(items.map(i => i.menu_item_id)).size !== items.length ||
+            customerName.length < 2 || customerName.length > 120 || customerPhone.length < 5 || customerPhone.length > 30 ||
+            !area || area.length > 120 || !["pickup","delivery"].includes(fulfillment) ||
+            (fulfillment === "delivery" && (!deliveryAddress || deliveryAddress.length > 300)) ||
+            deliveryAddress.length > 300)
+          return json({ error: "Invalid order details" }, 400, headers);
+        const result = await withDb(env, async db => {
+          await db.query("BEGIN");
+          try {
+            const shop = await db.query("SELECT id,owner_subject,area FROM kc_shops WHERE id=$1 AND approved=true", [data.shop_id]);
+            if (!shop.rowCount) { await db.query("ROLLBACK"); return { error: "Shop unavailable", status: 404 }; }
+            const ids = items.map(i => i.menu_item_id);
+            const menu = await db.query(
+              "SELECT id,name,price_cents FROM kc_menu_items WHERE shop_id=$1 AND available=true AND id=ANY($2::uuid[]) FOR SHARE",
+              [data.shop_id,ids]
+            );
+            if (menu.rowCount !== items.length) { await db.query("ROLLBACK"); return { error: "Menu item unavailable", status: 400 }; }
+            const byId = new Map(menu.rows.map(m => [m.id,m]));
+            const subtotal = items.reduce((sum,i) => sum + byId.get(i.menu_item_id).price_cents * i.quantity,0);
+            if (!Number.isSafeInteger(subtotal) || subtotal <= 0 || subtotal > 10000000) {
+              await db.query("ROLLBACK"); return { error: "Order total exceeds limit", status: 400 };
+            }
+            // Delivery pricing is not configured yet: do not accept an unverified delivery quote.
+            if (fulfillment === "delivery") { await db.query("ROLLBACK"); return { error: "Delivery checkout not yet enabled", status: 409 }; }
+            const number = "KC-" + crypto.randomUUID();
+            const order = await db.query(
+              "INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,status,subtotal_cents,delivery_cents,total_cents,test_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,0,$9,false) RETURNING id,order_number,status,total_cents,created_at",
+              [number,data.shop_id,uid,customerName,customerPhone,area,deliveryAddress || null,fulfillment,subtotal]
+            );
+            for (const item of items) {
+              const m = byId.get(item.menu_item_id);
+              await db.query("INSERT INTO kc_order_items(order_id,menu_item_id,item_name,unit_price_cents,quantity) VALUES ($1,$2,$3,$4,$5)",
+                [order.rows[0].id,m.id,m.name,m.price_cents,item.quantity]);
+            }
+            await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role) VALUES ($1,NULL,'pending',$2,'customer')",[order.rows[0].id,uid]);
+            await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES ($1,$2,'new_order','New kota order',$3)",
+              [shop.rows[0].owner_subject,order.rows[0].id,"Order "+order.rows[0].order_number]);
+            await db.query("COMMIT");
+            return { order: order.rows[0] };
+          } catch (error) { await db.query("ROLLBACK").catch(() => {}); throw error; }
+        });
+        return json(result.status ? { error: result.error } : result, result.status || 201, headers);
+      }
+      if (request.method === "GET" && path === "/api/my/orders") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "SELECT id,order_number,shop_id,status,subtotal_cents,delivery_cents,total_cents,created_at,updated_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100", [uid]
+        ));
+        return json({ orders: result.rows }, 200, headers);
+      }
       if (request.method === "GET" && path === "/api/admin/orders") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
