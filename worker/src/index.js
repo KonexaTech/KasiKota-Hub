@@ -26,33 +26,37 @@ const decodeBase64Url = input => {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), c => c.charCodeAt(0));
 };
-async function verifiedAdmin(request, env) {
+async function verifiedFirebaseUser(request, env) {
   const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
-  if (!token || !env.ADMIN_UID || !env.FIREBASE_PROJECT_ID) return false;
+  if (!token || !env.FIREBASE_PROJECT_ID) return null;
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   let header, claims;
   try {
     header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
     claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
-  } catch { return false; }
+  } catch { return null; }
   const now = Math.floor(Date.now() / 1000);
   if (header.alg !== "RS256" || typeof header.kid !== "string" ||
       claims.aud !== env.FIREBASE_PROJECT_ID ||
       claims.iss !== "https://securetoken.google.com/" + env.FIREBASE_PROJECT_ID ||
-      claims.sub !== env.ADMIN_UID || !claims.sub ||
+      typeof claims.sub !== "string" || !claims.sub ||
       !Number.isFinite(claims.exp) || claims.exp <= now ||
       !Number.isFinite(claims.iat) || claims.iat > now ||
-      !Number.isFinite(claims.auth_time) || claims.auth_time > now) return false;
+      !Number.isFinite(claims.auth_time) || claims.auth_time > now) return null;
   try {
     const response = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
-    if (!response.ok) return false;
+    if (!response.ok) return null;
     const { keys } = await response.json();
-    const jwk = keys?.find(key => key.kid === header.kid && key.kty === "RSA" && key.use === "sig");
-    if (!jwk) return false;
+    const jwk = keys?.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.use || key.use === "sig"));
+    if (!jwk) return null;
     const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, decodeBase64Url(parts[2]), new TextEncoder().encode(parts[0] + "." + parts[1]));
-  } catch { return false; }
+    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, decodeBase64Url(parts[2]), new TextEncoder().encode(parts[0] + "." + parts[1])) ? claims.sub : null;
+  } catch { return null; }
+}
+
+async function verifiedAdmin(request, env) {
+  return Boolean(env.ADMIN_UID && await verifiedFirebaseUser(request, env) === env.ADMIN_UID);
 }
 
 export default {
@@ -99,6 +103,18 @@ export default {
           outstanding_cents: shops.reduce((sum, shop) => sum + shop.outstanding_cents, 0),
           shops
         }, 200, headers);
+      }
+      if (path === "/api/owner/orders") {
+        const uid = await verifiedFirebaseUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(`
+          SELECT o.id, o.order_number, o.shop_id, o.status, o.created_at,
+            o.customer_name, o.area, o.fulfillment_type, o.subtotal_cents,
+            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes
+          FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
+          WHERE s.owner_subject=$1 ORDER BY o.created_at DESC LIMIT 100
+        `, [uid]));
+        return json({ orders: result.rows }, 200, headers);
       }
       if (path === "/api/shops") {
         const rows = await withDb(env, db => db.query("SELECT id, name, area, address FROM kc_shops WHERE approved = true ORDER BY name LIMIT 100"));
