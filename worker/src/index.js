@@ -104,6 +104,18 @@ export default {
           shops
         }, 200, headers);
       }
+      if (path === "/api/admin/orders") {
+        if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(`
+          SELECT o.id, o.order_number, o.shop_id, s.name AS shop_name,
+            o.status, o.created_at, o.area, o.fulfillment_type,
+            o.subtotal_cents, o.delivery_cents, o.total_cents,
+            o.test_order
+          FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
+          ORDER BY o.created_at DESC LIMIT 200
+        `));
+        return json({ orders: result.rows }, 200, headers);
+      }
       if (path === "/api/owner/orders") {
         const uid = await verifiedFirebaseUser(request, env);
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
