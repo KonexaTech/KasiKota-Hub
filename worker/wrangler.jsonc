@@ -3,5 +3,10 @@
   "main": "src/index.js",
   "compatibility_date": "2026-11-17",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true
+  "workers_dev": true,
+  "vars": {
+    "NEON_ONLY_MODE": "true",
+    "NEON_AUTH_BASE_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth",
+    "ALLOWED_ORIGIN": "https://siboniisozulu-alt.github.io"
+  }
 }
