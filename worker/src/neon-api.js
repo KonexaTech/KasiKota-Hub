@@ -48,7 +48,7 @@ export async function neonApi(request,env,withDb){
     const data=await readBody(request);
     if(!data||!uuid.test(data.requestId||"")||!uuid.test(data.shopId||"")||!Array.isArray(data.items)||!data.items.length||data.items.length>30||!["pickup","delivery"].includes(data.fulfillmentType)||typeof data.customerName!=="string"||data.customerName.trim().length<2||data.customerName.length>100||typeof data.customerPhone!=="string"||data.customerPhone.length>30||typeof data.area!=="string"||data.area.length>160||data.fulfillmentType==="delivery"&&(!data.deliveryAddress||data.deliveryAddress.length>300))return json({error:"Invalid checkout"},400);
     if(data.items.some(x=>!uuid.test(x.itemId||"")||!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>50))return json({error:"Invalid items"},400);
-    const result=await withDb(env,async db=>{await db.query("BEGIN");try{
+    try {const result=await withDb(env,async db=>{await db.query("BEGIN");try{
       const existing=(await db.query("SELECT id,order_number,status,total_cents,shop_id FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(existing){if(existing.shop_id!==data.shopId)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:existing,replayed:true}}
       const shop=(await db.query("SELECT id,owner_subject FROM kc_shops WHERE id=$1 AND approved=true",[data.shopId])).rows[0];if(!shop)throw Error("SHOP");
       const ids=data.items.map(x=>x.itemId);if(new Set(ids).size!==ids.length)throw Error("ITEMS");
@@ -66,6 +66,7 @@ export async function neonApi(request,env,withDb){
       await db.query("COMMIT");return {order,replayed:false};
     }catch(e){await db.query("ROLLBACK");throw e}});
     return json(result,result.replayed?200:201);
+    } catch(error){if(error?.message==="REQUEST_REUSED")return json({error:"Request ID already used for another checkout"},409);if(error?.message==="SHOP")return json({error:"Shop is not approved or available"},409);if(error?.message==="ITEMS")return json({error:"Menu items are unavailable or invalid"},400);throw error}
   }
   const statusRoute=/^\/api\/owner\/orders\/([0-9a-f-]{36})\/status$/.exec(path);
   if(method==="PATCH"&&statusRoute&&uuid.test(statusRoute[1])){
