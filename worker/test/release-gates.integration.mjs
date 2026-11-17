@@ -54,7 +54,9 @@ for (const status of ["accepted","preparing","ready_for_collection","completed"]
   expect(await request("/api/owner/orders/"+orderId+"/status",env.owner,"PATCH",{status,note:"Release-gate staging test"}),200,"Owner can set "+status);
   tracked=expect(await request("/api/orders/"+orderId,env.customer),200,"Customer can refresh tracking after "+status);
   assert.equal(tracked.order.status,status,"Customer sees "+status);
-  assert.equal(tracked.order.history.at(-1).new_status,status,"Status history records "+status);\n  const customerNotices=expect(await request("/api/notifications",env.customer),200,"Customer can load own status notifications");\n  assert.ok(customerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="order_status"),"Customer receives status-change notification");
+  assert.equal(tracked.order.history.at(-1).new_status,status,"Status history records "+status);
+  const customerNotices=expect(await request("/api/notifications",env.customer),200,"Customer can load own status notifications");
+  assert.ok(customerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="order_status"),"Customer receives status-change notification");
 }
 
 const adminOrders=expect(await request("/api/admin/orders",env.admin),200,"Admin can monitor all orders");
