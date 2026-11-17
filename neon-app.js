@@ -30,6 +30,7 @@ bind("applications",async()=>out(await api("/api/shop-applications/mine")));
 bind("myShops",async()=>{const r=await api("/api/owner/shops");option($("shop"),r.shops,x=>x.name);out(r)});
 bind("myMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu")));
 bind("addMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu","POST",{name:$("itemName").value,priceCents:Math.round(Number($("price").value)*100)})));
+bind("editMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu/"+encodeURIComponent($("menuItemId").value),"PATCH",{name:$("editItemName").value,priceCents:Math.round(Number($("editPrice").value)*100),available:$("available").checked})));
 bind("myOrders",async()=>out(await api("/api/owner/orders")));
 bind("orderItems",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items")));
 bind("updateStatus",async()=>out(await api("/api/owner/orders/"+encodeURIComponent($("orderId").value)+"/status","PATCH",{status:$("status").value,note:$("note").value})));
