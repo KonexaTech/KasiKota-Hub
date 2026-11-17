@@ -27,7 +27,7 @@ const decodeBase64Url = input => {
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), c => c.charCodeAt(0));
 };
 async function verifiedUser(request, env) {
-  const token = /^Bearer (\\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
+  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
   if (!token || !env.NEON_AUTH_JWKS_URL || !env.NEON_AUTH_BASE_URL || token.length > 8192) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
