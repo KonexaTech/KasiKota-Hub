@@ -26,37 +26,39 @@ const decodeBase64Url = input => {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), c => c.charCodeAt(0));
 };
-async function verifiedFirebaseUser(request, env) {
-  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
-  if (!token || !env.FIREBASE_PROJECT_ID) return null;
+async function verifiedUser(request, env) {
+  const token = /^Bearer (\\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
+  if (!token || !env.NEON_AUTH_JWKS_URL || !env.NEON_AUTH_BASE_URL || token.length > 8192) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
-  let header, claims;
   try {
-    header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
-    claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
-  } catch { return null; }
-  const now = Math.floor(Date.now() / 1000);
-  if (header.alg !== "RS256" || typeof header.kid !== "string" ||
-      claims.aud !== env.FIREBASE_PROJECT_ID ||
-      claims.iss !== "https://securetoken.google.com/" + env.FIREBASE_PROJECT_ID ||
-      typeof claims.sub !== "string" || !claims.sub ||
-      !Number.isFinite(claims.exp) || claims.exp <= now ||
-      !Number.isFinite(claims.iat) || claims.iat > now ||
-      !Number.isFinite(claims.auth_time) || claims.auth_time > now) return null;
-  try {
-    const response = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
+    const header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
+    const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
+    const now = Math.floor(Date.now() / 1000);
+    if (header.alg !== "EdDSA" || typeof header.kid !== "string" ||
+        typeof claims.sub !== "string" || !claims.sub ||
+        claims.iss !== env.NEON_AUTH_BASE_URL ||
+        !Number.isFinite(claims.exp) || claims.exp <= now ||
+        (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now))) return null;
+    const url = new URL(env.NEON_AUTH_JWKS_URL);
+    if (url.protocol !== "https:" || url.origin !== new URL(env.NEON_AUTH_BASE_URL).origin) return null;
+    const response = await fetch(url.toString());
     if (!response.ok) return null;
     const { keys } = await response.json();
-    const jwk = keys?.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.use || key.use === "sig"));
+    const jwk = keys?.find(k => k.kid === header.kid && k.kty === "OKP" && k.crv === "Ed25519");
     if (!jwk) return null;
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, decodeBase64Url(parts[2]), new TextEncoder().encode(parts[0] + "." + parts[1])) ? claims.sub : null;
+    const key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["verify"]);
+    const valid = await crypto.subtle.verify("Ed25519", key, decodeBase64Url(parts[2]), new TextEncoder().encode(parts[0] + "." + parts[1]));
+    return valid ? claims.sub : null;
   } catch { return null; }
 }
-
 async function verifiedAdmin(request, env) {
-  return Boolean(env.ADMIN_UID && await verifiedFirebaseUser(request, env) === env.ADMIN_UID);
+  const uid = await verifiedUser(request, env);
+  if (!uid) return false;
+  return withDb(env, async db => {
+    const r = await db.query("SELECT 1 FROM kc_admins WHERE subject=$1 LIMIT 1", [uid]);
+    return r.rowCount === 1;
+  });
 }
 
 export default {
@@ -65,18 +67,18 @@ export default {
     const origin = request.headers.get("origin");
     const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
     if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
-    if (request.method !== "GET") return json({ error: "Write operations not enabled until authentication is configured" }, 405, headers);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
+    if (!["GET","POST","PATCH"].includes(request.method)) return json({ error: "Method not allowed" }, 405, headers);
     const path = new URL(request.url).pathname;
-    if (path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+    if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
     try {
 
-      if (path === "/api/health/db") {
+      if (request.method === "GET" && path === "/api/health/db") {
         // Deliberately omit database error details and connection metadata.
         await withDb(env, db => db.query("SELECT 1 AS ok"));
         return json({ status: "ok", database: "reachable" }, 200, headers);
       }
-      if (path === "/api/admin/commission") {
+      if (request.method === "GET" && path === "/api/admin/commission") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT s.id AS shop_id, s.name AS shop_name,
@@ -104,7 +106,7 @@ export default {
           shops
         }, 200, headers);
       }
-      if (path === "/api/admin/orders") {
+      if (request.method === "GET" && path === "/api/admin/orders") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, s.name AS shop_name,
@@ -116,8 +118,8 @@ export default {
         `));
         return json({ orders: result.rows }, 200, headers);
       }
-      if (path === "/api/owner/orders") {
-        const uid = await verifiedFirebaseUser(request, env);
+      if (request.method === "GET" && path === "/api/owner/orders") {
+        const uid = await verifiedUser(request, env);
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, o.status, o.created_at,
@@ -128,12 +130,12 @@ export default {
         `, [uid]));
         return json({ orders: result.rows }, 200, headers);
       }
-      if (path === "/api/shops") {
+      if (request.method === "GET" && path === "/api/shops") {
         const rows = await withDb(env, db => db.query("SELECT id, name, area, address FROM kc_shops WHERE approved = true ORDER BY name LIMIT 100"));
         return json({ shops: rows.rows }, 200, headers);
       }
       const match = /^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
-      if (match) {
+      if (request.method === "GET" && match) {
         const rows = await withDb(env, db => db.query("SELECT m.id, m.name, m.price_cents FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE m.shop_id=$1 AND m.available=true AND s.approved=true ORDER BY m.name LIMIT 100", [match[1]]));
         return json({ items: rows.rows }, 200, headers);
       }
