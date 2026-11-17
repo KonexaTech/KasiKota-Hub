@@ -852,8 +852,8 @@ $("neon-commission-refresh").addEventListener("click", async () => {
   const status = $("neon-commission-status");
   const results = $("neon-commission-results");
   results.replaceChildren();
-  const origin = $("neon-worker-url").value.trim().replace(/\\/$/, "");
-  if (!/^https:\\/\\/[a-z0-9.-]+(?::\\d+)?$/i.test(origin)) {
+  const origin = $("neon-worker-url").value.trim().replace(/\/$/, "");
+  if (!/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)) {
     status.textContent = "Enter the deployed Cloudflare Worker HTTPS origin.";
     return;
   }
