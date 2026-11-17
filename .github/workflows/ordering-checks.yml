@@ -13,4 +13,7 @@ jobs:
         with:
           node-version: '22'
       - name: Verify ordering and dashboard integration
-        run: node tests/ordering-static.test.cjs
+        run: |
+          node --check worker/src/index.js
+          node --check worker/src/privileged.js
+          node tests/ordering-static.test.cjs
