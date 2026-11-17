@@ -3,7 +3,7 @@ const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.
 const auth=createAuthClient(AUTH_URL,{fetchOptions:{credentials:"include"}});
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
 const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
-let requestId=null,menu=[];
+let requestId=null,menu=[],cart=[];
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){const r=await auth.getSession();if(r.error)throw Error(r.error.message);if(!r.data?.session?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.session.token;}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
@@ -15,8 +15,10 @@ $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();ou
 function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
-$("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));out(data.items.length+" menu items")});
-$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});requestId=null;$("orderId").value=data.order.id;out(data)})()};
+$("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
+bind("addCart",async()=>{const item=menu.find(x=>x.id===$("item").value),quantity=Number($("quantity").value);if(!item||!Number.isInteger(quantity)||quantity<1||quantity>50)throw Error("Select a menu item and quantity");const current=cart.find(x=>x.itemId===item.id);if(current){if(current.quantity+quantity>50)throw Error("Maximum 50 per item");current.quantity+=quantity}else cart.push({itemId:item.id,quantity});$("cart").textContent=cart.map(x=>{const m=menu.find(i=>i.id===x.itemId);return m.name+" × "+x.quantity}).join(", ");out("Added to cart")});
+bind("clearCart",async()=>{cart=[];requestId=null;$("cart").textContent="Cart empty";out("Cart cleared")});
+$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});requestId=null;cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;out(data)})()};
 bind("myOrders",async()=>out(await api("/api/orders/mine")));
 bind("track",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value))));
 bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items")));
