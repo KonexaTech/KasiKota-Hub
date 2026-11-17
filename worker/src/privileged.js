@@ -53,7 +53,9 @@ export async function privilegedRoute(request,env,verify,withDb){
   const id=String(data.orderId||"");if(!uidPattern.test(id))return reply({error:"Invalid order ID"},400);
   const doc=await googleRequest(env,"https://firestore.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/databases/(default)/documents/orders/"+encodeURIComponent(id));
   if(field(doc,"customerUid")!==uid)return reply({error:"Order owner mismatch"},403);
-  const ownerUid=field(doc,"ownerUid");if(!ownerUid)return reply({error:"Order has no assigned shop owner"},422);
+  const ownerUid=field(doc,"ownerUid"),shopId=field(doc,"shopId");if(!ownerUid||!shopId||!uidPattern.test(shopId)||field(doc,"orderStatus")!=="pending")return reply({error:"Invalid order notification state"},422);
+  const shop=await googleRequest(env,"https://firestore.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/databases/(default)/documents/shops/"+encodeURIComponent(shopId));
+  if(field(shop,"ownerUid")!==ownerUid||field(shop,"status")!=="approved")return reply({error:"Shop ownership mismatch"},403);
   const result=await withDb(env,async db=>{
     const reserved=await db.query("INSERT INTO kc_push_dispatch (order_id,owner_subject) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING order_id",[id,ownerUid]);
     if(!reserved.rowCount)return {alreadySent:true};
