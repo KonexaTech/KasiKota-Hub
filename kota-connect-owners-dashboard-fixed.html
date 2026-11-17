@@ -96,7 +96,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:15px}
 
 <div class="row">
 <div class="field">
-<label for="phone">Phone / WhatsApp</label>
+<label for="phone">Phone</label>
 <input id="phone" type="tel" maxlength="35">
 </div>
 <div class="field">
@@ -144,10 +144,7 @@ payments directly. Orders continue as normal.
 <section class="card">
 <h2>Customer orders</h2>
 <p class="muted">
-Save the status first, then use the WhatsApp button to prepare
-an update for the customer. WhatsApp requires the owner to tap
-Send. Only mark an order Completed after it has actually been
-fulfilled. No commission is charged during the free launch.
+Orders appear live while this dashboard is open. Save a status update to notify the customer in their tracking screen. Only mark Completed after fulfillment.
 </p>
 <p id="orders-message" class="status" role="status">Loading orders…</p>
 <div id="orders-list"></div>
@@ -166,7 +163,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
 import {
   getFirestore, collection, query, where, getDocs, doc, getDoc,
-  updateDoc, serverTimestamp, runTransaction
+  updateDoc, serverTimestamp, runTransaction, onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -386,87 +383,6 @@ function orderItems(order) {
   ).join(", ");
 }
 
-/* Convert common South African phone formats to WhatsApp format. */
-function whatsappPhone(raw) {
-  let digits = str(raw).replace(/\D/g, "");
-
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("0")) digits = "27" + digits.slice(1);
-
-  if (!digits.startsWith("27") ||
-      digits.length < 11 ||
-      digits.length > 12) return "";
-
-  return digits;
-}
-
-function statusMessageFor(order, nextStatus, note, delayMinutes) {
-  const ref = str(order.orderNumber || order.id || "your order");
-  const itemText = orderItems(order);
-  const shopName = str(
-    selectedShop?.data?.shopName ||
-    selectedShop?.data?.name ||
-    "the shop"
-  );
-
-  const customerName = str(order.customerName).trim();
-  const greetings = customerName
-    ? `Hi ${customerName}!`
-    : "Hi there!";
-
-  const messages = {
-    pending: "Your order has been received and is awaiting confirmation.",
-    accepted: "Good news! The shop has accepted your order.",
-    preparing: "The shop is preparing your order now.",
-    ready_for_collection: "Your order is ready for collection.",
-    out_for_delivery: "Your order is on its way for delivery.",
-    delayed: `Your order has been delayed${delayMinutes ? ` by about ${delayMinutes} minutes` : ""}.`,
-    rejected: "Unfortunately, the shop cannot fulfil your order.",
-    completed: "Your order has been marked completed. Thank you for supporting a local business!"
-  };
-
-  let body = messages[nextStatus] || "Your order status has been updated.";
-
-  if (nextStatus === "rejected" && note) {
-    body += " Reason: " + note;
-  } else if (nextStatus === "delayed" && note) {
-    body += " " + note;
-  } else if (note) {
-    body += " Shop note: " + note;
-  }
-
-  return `${greetings}
-
-Kota Connect order ${ref}
-${itemText}
-Shop: ${shopName}
-
-${body}
-
-Thank you for supporting local Newcastle businesses! 🍔`;
-}
-
-function openWhatsAppForOrder(order, statusValue, noteValue, delayValue, statusEl) {
-  const phone = whatsappPhone(order.customerPhone);
-
-  if (!phone) {
-    statusEl.textContent =
-      "WhatsApp was not opened: the customer phone number is missing or not a valid South African number. Check the number on the order before contacting the customer.";
-    return;
-  }
-
-  const msg = statusMessageFor(
-    order, statusValue, noteValue, delayValue
-  );
-  const url = "https://wa.me/" + phone + "?text=" +
-    encodeURIComponent(msg);
-
-  window.open(url, "_blank", "noopener,noreferrer");
-
-  statusEl.textContent =
-    "WhatsApp opened with the update prepared. Check the recipient and message, then tap Send in WhatsApp. The message has not been sent automatically.";
-}
-
 function createOrderCard(orderDoc) {
   const order = { ...orderDoc.data, id: orderDoc.id };
   const id = orderDoc.id;
@@ -583,10 +499,7 @@ function createOrderCard(orderDoc) {
   save.className = "primary";
   save.textContent = "Save order update";
 
-  const wa = document.createElement("button");
-  wa.type = "button";
-  wa.className = "whatsapp";
-  wa.textContent = "Message customer on WhatsApp";
+
 
   const statusEl = document.createElement("p");
   statusEl.className = "status";
@@ -600,17 +513,7 @@ function createOrderCard(orderDoc) {
     save.textContent = test ? "Test order locked" : "Order completed";
   }
 
-  wa.disabled = test;
 
-  wa.addEventListener("click", () => {
-    openWhatsAppForOrder(
-      order,
-      status.value,
-      note.value.trim(),
-      status.value === "delayed" ? Number(delay.value) : 0,
-      statusEl
-    );
-  });
 
   save.addEventListener("click", async () => {
     if (!currentUser || !selectedShop) {
@@ -645,7 +548,6 @@ function createOrderCard(orderDoc) {
     }
 
     save.disabled = true;
-    wa.disabled = true;
 
     statusEl.textContent = nextStatus === "completed"
       ? "Completing order — no commission is charged during the free launch…"
@@ -700,14 +602,13 @@ function createOrderCard(orderDoc) {
         order.delayMinutes = 0;
 
         statusEl.textContent =
-          "Order completed successfully. No commission was charged during the free launch. You can now prepare the customer WhatsApp update.";
+          "Order completed successfully. No commission was charged during the free launch. The customer tracking screen updates automatically.";
 
         status.disabled = true;
         note.disabled = true;
         delay.disabled = true;
         save.disabled = true;
         save.textContent = "Order completed";
-        wa.disabled = false;
 
       } else {
         await updateDoc(orderRef, {
@@ -722,9 +623,8 @@ function createOrderCard(orderDoc) {
         order.delayMinutes = delayMinutes;
 
         statusEl.textContent =
-          "Order update saved. Tap “Message customer on WhatsApp” to prepare the customer update; WhatsApp will require you to tap Send.";
+          "Order update saved. Customer tracking updates automatically.";
 
-        wa.disabled = false;
       }
 
       /*
@@ -740,11 +640,11 @@ function createOrderCard(orderDoc) {
         ". Confirm that the matching Firestore rules are published.";
 
       save.disabled = false;
-      wa.disabled = false;
+
     }
   });
 
-  actions.append(save, wa);
+  actions.append(save);
   card.append(
     title, summary, customer, destination, quote,
     statusWrap, noteWrap, delayWrap, actions, statusEl
@@ -753,72 +653,26 @@ function createOrderCard(orderDoc) {
   return card;
 }
 
-async function loadOrders() {
-  if (!currentUser || loading) return;
-
-  loading = true;
-  const list = $("orders-list");
-  list.replaceChildren();
-  message("orders-message", "Loading orders…");
-
-  try {
-    if (!selectedShop) {
-      message("orders-message", "Select an approved shop first.");
-      return;
-    }
-
-    const ordersQuery = query(
-      collection(db, "orders"),
-      where("ownerUid", "==", currentUser.uid)
-    );
-
-    const ordersSnap = await getDocs(ordersQuery);
-
-    const orders = ordersSnap.docs
-      .map(d => ({ id: d.id, data: d.data() }))
-      .filter(x =>
-        x.data.ownerUid === currentUser.uid &&
-        x.data.shopId === selectedShop.id
-      );
-
-    orders.sort((a, b) =>
-      (b.data.createdAt?.toMillis?.() || 0) -
-      (a.data.createdAt?.toMillis?.() || 0)
-    );
-
-    if (!orders.length) {
-      message(
-        "orders-message",
-        "No orders found for this shop yet. Check that orders have the correct ownerUid and shopId."
-      );
-      return;
-    }
-
-    message("orders-message", orders.length + " order(s) found.");
-
-    orders.forEach(item => {
-      list.appendChild(createOrderCard(item));
-    });
-
-  } catch (error) {
-    console.error(error);
-    message(
-      "orders-message",
-      "Could not load orders: " + (error.code || error.message) +
-      ". Check the Firestore read rules.",
-      true
-    );
-  } finally {
-    loading = false;
-  }
+let stopOrders=null;
+function loadOrders(){
+ if(!currentUser||!selectedShop)return;
+ if(stopOrders){stopOrders();stopOrders=null}
+ const uid=currentUser.uid,shopId=selectedShop.id,list=$("orders-list");
+ message("orders-message","Listening for live orders…");
+ stopOrders=onSnapshot(query(collection(db,"orders"),where("ownerUid","==",uid)),snapshot=>{
+  if(!currentUser||currentUser.uid!==uid||!selectedShop||selectedShop.id!==shopId)return;
+  const orders=snapshot.docs.map(d=>({id:d.id,data:d.data()})).filter(x=>x.data.ownerUid===uid&&x.data.shopId===shopId).sort((a,b)=>(b.data.createdAt?.toMillis?.()||0)-(a.data.createdAt?.toMillis?.()||0));
+  list.replaceChildren();orders.forEach(item=>list.appendChild(createOrderCard(item)));
+  message("orders-message",orders.length?orders.length+" live order(s)":"No orders for this shop yet.");
+ },error=>message("orders-message","Live orders unavailable: "+(error.code||error.message),true));
 }
-
 $("refresh-orders").addEventListener("click", loadOrders);
 
 onAuthStateChanged(auth, async user => {
   currentUser = user;
 
   if (!user) {
+    if(stopOrders){stopOrders();stopOrders=null}
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
     $("orders-list").replaceChildren();
