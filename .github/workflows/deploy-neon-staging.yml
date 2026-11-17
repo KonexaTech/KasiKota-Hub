@@ -3,16 +3,11 @@ on:
   push:
     branches:
       - feature/neon-only-api-auth
+      - fix/six-release-gates-neon-staging
     paths:
       - 'worker/**'
       - '.github/workflows/deploy-neon-staging.yml'
   workflow_dispatch:
-  push:
-    branches:
-      - feature/neon-only-api-auth
-    paths:
-      - 'worker/**'
-      - '.github/workflows/deploy-neon-staging.yml'
 permissions:
   contents: read
 jobs:
@@ -24,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feature/neon-only-api-auth
+          ref: ${{ github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -36,7 +31,7 @@ jobs:
         run: |
           test -n "$CF_TOKEN" && test -n "$NEON_DB" || { echo 'Missing CLOUDFLARE_API_TOKEN or KOTA_NEON_DEV_DATABASE_URL secret'; exit 1; }
           [[ "$CF_ACCOUNT" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Configured Cloudflare account ID is malformed'; exit 1; }
-      - name: Install and check
+      - name: Install and check Worker
         run: |
           npm install --no-audit --no-fund
           npm run check
