@@ -1,6 +1,7 @@
 const fs=require("node:fs"),assert=require("node:assert/strict");
 const read=p=>fs.readFileSync(p,"utf8");
 const customer=read("index.html"),owner=read("kota-connect-owners-dashboard-fixed.html"),admin=read("admin-dashboard.html"),tracking=read("order-tracking.html");
+const worker=read("worker/src/index.js"),privileged=read("worker/src/privileged.js"),pushSw=read("firebase-messaging-sw.js");
 const checks=[
 ["customer cart",customer.includes('id="addToCart"')&&customer.includes('id="cartItems"')],
 ["no WhatsApp checkout",!customer.includes("wa.me")],
@@ -18,7 +19,13 @@ const checks=[
 ["tracking clears inaccessible order",tracking.includes("function clearTracking()")],
 ["tracking respects fulfillment type",tracking.includes("visibleSteps=steps.filter")],
 ["premium styles on all pages",[customer,owner,admin,tracking].every(x=>x.includes('href="premium.css"'))],
-["admin valid document start",admin.trimStart().startsWith("<!doctype html>")]
+["admin valid document start",admin.trimStart().startsWith("<!doctype html>")],
+["admin privileged backend",privileged.includes('uid!==env.ADMIN_UID')&&privileged.includes('customAttributes')],
+["push verifies customer and approved shop",privileged.includes('customerUid')&&privileged.includes('Shop ownership mismatch')],
+["push idempotency",privileged.includes('ON CONFLICT DO NOTHING')],
+["owner background push registration",owner.includes('getToken(getMessaging(app)')],
+["FCM background worker",pushSw.includes('firebase.messaging()')],
+["trusted Worker routes",worker.includes('privilegedRoute(request,env')]
 ];
 let failed=0;for(const [name,ok] of checks){console.log((ok?"PASS":"FAIL")+" "+name);if(!ok)failed++}
 assert.equal(failed,0,failed+" static checks failed");
