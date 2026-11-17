@@ -12,5 +12,5 @@ firebase.initializeApp({
 firebase.messaging();
 self.addEventListener("notificationclick",event=>{
  event.notification.close();
- event.waitUntil(clients.openWindow("./kota-connect-owners-dashboard-fixed.html"));
+ event.waitUntil(clients.openWindow(new URL("../kota-connect-owners-dashboard-fixed.html",self.registration.scope).href));
 });
