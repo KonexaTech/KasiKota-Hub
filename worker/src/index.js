@@ -80,31 +80,7 @@ export default {
       }
       if (request.method === "GET" && path === "/api/admin/commission") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
-        const result = await withDb(env, db => db.query(`
-          SELECT s.id AS shop_id, s.name AS shop_name,
-            COUNT(e.id)::integer AS eligible_orders,
-            COALESCE(SUM(e.amount_cents),0)::integer AS earned_cents,
-            COALESCE((SELECT SUM(p.amount_cents) FROM kc_commission_payments p WHERE p.shop_id=s.id),0)::integer AS paid_cents
-          FROM kc_shops s
-          LEFT JOIN kc_commission_entries e ON e.shop_id=s.id
-          GROUP BY s.id,s.name
-          ORDER BY s.name LIMIT 1000
-        `));
-        const shops = result.rows.map(row => ({
-          ...row,
-          outstanding_cents: Math.max(0, row.earned_cents - row.paid_cents),
-          remaining_to_threshold_cents: Math.max(0, 2000 - (row.earned_cents - row.paid_cents))
-        }));
-        return json({
-          source: "neon_ledger",
-          commission_per_order_cents: 50,
-          payout_threshold_cents: 2000,
-          eligible_orders: shops.reduce((sum, shop) => sum + shop.eligible_orders, 0),
-          earned_cents: shops.reduce((sum, shop) => sum + shop.earned_cents, 0),
-          paid_cents: shops.reduce((sum, shop) => sum + shop.paid_cents, 0),
-          outstanding_cents: shops.reduce((sum, shop) => sum + shop.outstanding_cents, 0),
-          shops
-        }, 200, headers);
+        return json({ enabled: false, phase: "launch", message: "Commission is disabled for the launch phase." }, 200, headers);
       }
       if (request.method === "POST" && path === "/api/shop-applications") {
         const uid = await verifiedUser(request, env);
