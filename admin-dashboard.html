@@ -169,6 +169,7 @@ footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; 
 </section>
 
 <section id="dashboard" class="hidden">
+  <div class="card"><h2>Administrator account approval</h2><p class="muted">Only the primary administrator can approve verified accounts. Enter the trusted Worker URL and the new account UID. Do not share passwords.</p><label class="field"><span>Secure Worker URL</span><input id="admin-approval-worker" type="url" placeholder="https://your-worker.workers.dev"></label><label class="field"><span>Account UID</span><input id="admin-approval-uid" autocomplete="off" placeholder="Firebase account UID"></label><div class="row"><button id="approve-admin" type="button">Approve administrator</button><button id="revoke-admin" type="button" class="secondary">Revoke access</button></div><p id="admin-approval-message" role="status"></p></div>
 
   <div class="card">
     <div class="row">
@@ -291,6 +292,7 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -900,7 +902,9 @@ $("neon-commission-refresh").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("admin-register-form").addEventListener("submit",async event=>{event.preventDefault();const email=$("admin-register-email").value.trim(),password=$("admin-register-password").value,button=$("admin-register-button");button.disabled=true;try{await createUserWithEmailAndPassword(auth,email,password);message("admin-register-message","Account created, but administrator access is not granted. Ask the existing administrator to approve and provision this account securely.","success");await signOut(auth)}catch(error){message("admin-register-message",errorText(error),"error")}finally{button.disabled=false}});
+document.getElementById("admin-register-form").addEventListener("submit",async event=>{event.preventDefault();const email=$("admin-register-email").value.trim(),password=$("admin-register-password").value,button=$("admin-register-button");button.disabled=true;try{const credential=await createUserWithEmailAndPassword(auth,email,password);await sendEmailVerification(credential.user);message("admin-register-message","Account created. Verify your email, then give the primary administrator this UID: "+credential.user.uid+". Registration does not grant admin access.","success");await signOut(auth)}catch(error){message("admin-register-message",errorText(error),"error")}finally{button.disabled=false}});
+
+for(const [buttonId,endpoint] of [["approve-admin","approve"],["revoke-admin","revoke"]]){$(buttonId).addEventListener("click",async()=>{const url=$("admin-approval-worker").value.trim().replace(/\\/$/,""),uid=$("admin-approval-uid").value.trim(),button=$(buttonId);if(!url.startsWith("https://")||!uid){message("admin-approval-message","Enter a secure Worker URL and the account UID.","error");return}button.disabled=true;try{const token=await auth.currentUser.getIdToken(true);const response=await fetch(url+"/api/admin/"+endpoint,{method:"POST",headers:{"authorization":"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({uid})});const result=await response.json();if(!response.ok)throw Error(result.error||"Request failed");message("admin-approval-message",endpoint==="approve"?"Account approved. User must sign in again to refresh their permissions.":"Administrator access revoked. Existing sessions may retain old claims until refresh.","success")}catch(error){message("admin-approval-message",error.message,"error")}finally{button.disabled=false}})}
 
 /* VERIFY AUTHENTICATED ADMIN */
 
