@@ -66,7 +66,9 @@ assert.equal(adminOrder.status,"completed","Admin sees final order status");
 assert.ok(Array.isArray(adminOrder.items)&&adminOrder.items.length===1,"Admin sees line-item details");
 assert.ok(Array.isArray(adminOrder.history)&&adminOrder.history.length>=5,"Admin sees full status history");
 
-expect(await request("/api/orders/"+orderId,env.otherCustomer),404,"Other customer cannot read this order");\nexpect(await request("/api/orders/"+orderId,null),401,"Unauthenticated user cannot track an order");\nexpect(await request("/api/orders",null,"POST",{}),401,"Unauthenticated user cannot create an order");
+expect(await request("/api/orders/"+orderId,env.otherCustomer),404,"Other customer cannot read this order");
+expect(await request("/api/orders/"+orderId,null),401,"Unauthenticated user cannot track an order");
+expect(await request("/api/orders",null,"POST",{}),401,"Unauthenticated user cannot create an order");
 expect(await request("/api/orders/"+orderId,env.otherOwner),404,"Other shop owner cannot read this order");
 expect(await request("/api/owner/orders/"+orderId+"/status",env.otherOwner,"PATCH",{status:"completed"}),404,"Other shop owner cannot update this order");
 expect(await request("/api/owner/orders/"+orderId+"/status",env.customer,"PATCH",{status:"completed"}),404,"Customer cannot update owner order status");
