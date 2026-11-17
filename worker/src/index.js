@@ -250,6 +250,48 @@ export default {
         ));
         return json({ orders: result.rows }, 200, headers);
       }
+      const shopMenuWrite = /^\/api\/owner\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
+      if (request.method === "POST" && shopMenuWrite) {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        const name = typeof data?.name === "string" ? data.name.trim() : "";
+        if (name.length < 2 || name.length > 160 || !Number.isInteger(data?.price_cents) ||
+            data.price_cents < 1 || data.price_cents > 1000000)
+          return json({ error: "Invalid menu item" }, 400, headers);
+        const result = await withDb(env, db => db.query(
+          "INSERT INTO kc_menu_items(shop_id,name,price_cents) SELECT id,$1,$2 FROM kc_shops WHERE id=$3 AND owner_subject=$4 AND approved=true RETURNING id,name,price_cents",
+          [name,data.price_cents,shopMenuWrite[1],uid]
+        ));
+        if (!result.rowCount) return json({ error: "Shop not found" }, 404, headers);
+        return json({ item:result.rows[0] }, 201, headers);
+      }
+      if (request.method === "GET" && path === "/api/owner/shops") {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, db => db.query(
+          "SELECT id,name,area,address,approved FROM kc_shops WHERE owner_subject=$1 ORDER BY created_at DESC", [uid]
+        ));
+        return json({ shops:result.rows }, 200, headers);
+      }
+      const orderDetail = /^\/api\/orders\/([0-9a-f-]{36})$/.exec(path);
+      if (request.method === "GET" && orderDetail) {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        const result = await withDb(env, async db => {
+          const order = await db.query(
+            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_name,o.fulfillment_type,o.area,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
+            [orderDetail[1],uid]
+          );
+          if (!order.rowCount) return null;
+          const items = await db.query("SELECT item_name,unit_price_cents,quantity FROM kc_order_items WHERE order_id=$1",[orderDetail[1]]);
+          const history = await db.query("SELECT previous_status,new_status,note,created_at FROM kc_order_status_events WHERE order_id=$1 ORDER BY created_at ASC",[orderDetail[1]]);
+          return { ...order.rows[0],items:items.rows,history:history.rows };
+        });
+        if (!result) return json({ error:"Not found" },404,headers);
+        return json({ order:result },200,headers);
+      }
       if (request.method === "GET" && path === "/api/admin/orders") {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
