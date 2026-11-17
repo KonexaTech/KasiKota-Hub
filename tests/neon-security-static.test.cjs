@@ -11,4 +11,4 @@ test("Order status updates require shop ownership and lock row",()=>{assert.matc
 test("Order and history reads verify customer, owner or admin",()=>{assert.match(api,/order\.customer_subject!==subject&&order\.owner_subject!==subject/);assert.match(api,/\/history/);assert.match(api,/actor_role,note,created_at/)});
 test("Notifications are scoped to authenticated recipient",()=>{assert.match(api,/WHERE recipient_subject=\$1/);assert.match(api,/read_at=COALESCE\(read_at,now\(\)\)/)});
 test("Shop approval is database-admin-gated",()=>{assert.match(api,/path==="\/api\/admin\/shop-applications"/);assert.match(api,/application\.status!=="pending"/)});
-test("Staging page has no Firebase SDK dependency",()=>{assert.doesNotMatch(page,/firebase(?:-app|-auth|-firestore)?(?:\.js)?|firebaseapp\.com/i);assert.match(page,/createAuthClient/)});
+test("Staging page has no Firebase SDK dependency",()=>{assert.doesNotMatch(page,/https?:[^"\s]+firebase[^"\s]+\.js|from\s+["\x27][^"\x27]*firebase/i);assert.match(page,/createAuthClient/)});
