@@ -260,6 +260,15 @@ footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; 
       </div>
     </div>
 
+    <div class="notice">
+      <strong>Neon commission ledger (development)</strong>
+      <p class="muted">Connect a deployed Cloudflare Worker to display verified Neon ledger balances. Firebase estimates remain separate until migration is completed.</p>
+      <label for="neon-worker-url">Cloudflare Worker HTTPS origin</label>
+      <input id="neon-worker-url" type="url" placeholder="https://your-worker.workers.dev" style="width:100%;max-width:480px">
+      <button type="button" id="neon-commission-refresh" class="secondary">Load Neon commission</button>
+      <p id="neon-commission-status" role="status">Not connected.</p>
+      <div id="neon-commission-results"></div>
+    </div>
     <h3>Estimated commission by shop</h3>
     <div id="commission-list" class="empty">
       Commission estimates will appear after refreshing.
@@ -835,6 +844,54 @@ document.querySelectorAll("[data-tab]").forEach(button => {
       );
     });
   });
+});
+
+
+// The Neon commission panel is opt-in until the Worker is deployed and verified.
+$("neon-commission-refresh").addEventListener("click", async () => {
+  const status = $("neon-commission-status");
+  const results = $("neon-commission-results");
+  results.replaceChildren();
+  const origin = $("neon-worker-url").value.trim().replace(/\\/$/, "");
+  if (!/^https:\\/\\/[a-z0-9.-]+(?::\\d+)?$/i.test(origin)) {
+    status.textContent = "Enter the deployed Cloudflare Worker HTTPS origin.";
+    return;
+  }
+  const user = auth.currentUser;
+  if (!user || user.uid !== ADMIN_UID) {
+    status.textContent = "Administrator sign-in required.";
+    return;
+  }
+  status.textContent = "Loading authenticated Neon commission records…";
+  try {
+    const token = await user.getIdToken();
+    const response = await fetch(origin + "/api/admin/commission", {
+      headers: { Authorization: "Bearer " + token },
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error("Worker returned HTTP " + response.status);
+    const data = await response.json();
+    if (data.source !== "neon_ledger" || !Array.isArray(data.shops)) throw new Error("Unexpected API response");
+    const format = cents => money(Number(cents) / 100);
+    const summary = el("p", "", "Neon eligible orders: " + data.eligible_orders +
+      " · Earned: " + format(data.earned_cents) +
+      " · Paid: " + format(data.paid_cents) +
+      " · Outstanding: " + format(data.outstanding_cents));
+    results.append(summary);
+    for (const shop of data.shops) {
+      const card = el("article", "item");
+      card.append(el("h3", "", shop.shop_name));
+      addLine(card, "Eligible orders", shop.eligible_orders);
+      addLine(card, "Earned", format(shop.earned_cents));
+      addLine(card, "Paid", format(shop.paid_cents));
+      addLine(card, "Outstanding", format(shop.outstanding_cents));
+      addLine(card, "Remaining to R20", format(shop.remaining_to_threshold_cents));
+      results.append(card);
+    }
+    status.textContent = "Neon ledger loaded. This does not include unmigrated Firebase orders.";
+  } catch (error) {
+    status.textContent = "Neon ledger unavailable: " + (error?.message || "Request failed");
+  }
 });
 
 /* VERIFY AUTHENTICATED ADMIN */
