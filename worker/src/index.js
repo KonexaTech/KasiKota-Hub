@@ -27,7 +27,7 @@ const decodeBase64Url = input => {
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), c => c.charCodeAt(0));
 };
 async function verifiedAdmin(request, env) {
-  const token = /^Bearer (\\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
+  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
   if (!token || !env.ADMIN_UID || !env.FIREBASE_PROJECT_ID) return false;
   const parts = token.split(".");
   if (parts.length !== 3) return false;
