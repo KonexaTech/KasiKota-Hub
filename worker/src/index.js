@@ -86,10 +86,10 @@ export default {
       let data;
       try { data = await request.json(); } catch { return json({error:"Invalid request"},400,headers); }
       const email = typeof data?.email === "string" ? data.email.trim().toLowerCase() : "";
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254 || !env.NEON_AUTH_BASE_URL)
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !env.NEON_AUTH_BASE_URL)
         return json({error:"Invalid email or authentication configuration"},400,headers);
       const redirectTo = workerOrigin + "/password-reset";
-      const upstream = await fetch(env.NEON_AUTH_BASE_URL.replace(/\\/$/,"") + "/request-password-reset", {
+      const upstream = await fetch(env.NEON_AUTH_BASE_URL.replace(/\/$/,"") + "/request-password-reset", {
         method:"POST", headers:{"content-type":"application/json"},
         body:JSON.stringify({email,redirectTo})
       });
