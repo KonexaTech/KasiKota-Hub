@@ -23,6 +23,11 @@ jobs:
       - name: Generate Capacitor Android project
         working-directory: android-staging
         run: npm run build:android
+      - name: Require Android 8.0 or later
+        working-directory: android-staging/android
+        run: |
+          sed -i 's/minSdkVersion = [0-9][0-9]*/minSdkVersion = 26/' variables.gradle
+          grep -q 'minSdkVersion = 26' variables.gradle
       - name: Build debug APK
         working-directory: android-staging/android
         run: chmod +x gradlew && ./gradlew assembleDebug
