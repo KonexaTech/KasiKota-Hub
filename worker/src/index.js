@@ -277,7 +277,7 @@ export default {
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, async db => {
           const order = await db.query(
-            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_name,o.fulfillment_type,o.area,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
+            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_subject,o.customer_name,o.customer_phone,o.fulfillment_type,o.area,o.delivery_address,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.delay_minutes,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
             [orderDetail[1],uid]
           );
           if (!order.rowCount) return null;
@@ -292,9 +292,18 @@ export default {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, s.name AS shop_name,
-            o.status, o.created_at, o.area, o.fulfillment_type,
+            o.status, o.created_at, o.updated_at, o.area, o.fulfillment_type,
+            o.customer_name, o.customer_phone, o.delivery_address,
             o.subtotal_cents, o.delivery_cents, o.total_cents,
-            o.test_order
+            o.owner_note, o.delay_minutes, o.test_order,
+            COALESCE((SELECT json_agg(json_build_object(
+              'menu_item_id',oi.menu_item_id,'name',oi.item_name,
+              'unit_price_cents',oi.unit_price_cents,'quantity',oi.quantity
+            ) ORDER BY oi.id) FROM kc_order_items oi WHERE oi.order_id=o.id),'[]'::json) AS items,
+            COALESCE((SELECT json_agg(json_build_object(
+              'previous_status',ev.previous_status,'new_status',ev.new_status,
+              'actor_role',ev.actor_role,'note',ev.note,'created_at',ev.created_at
+            ) ORDER BY ev.created_at ASC) FROM kc_order_status_events ev WHERE ev.order_id=o.id),'[]'::json) AS history
           FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
           ORDER BY o.created_at DESC LIMIT 200
         `));
@@ -309,7 +318,10 @@ export default {
         const next = data?.status;
         const allowed = ["accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
         const note = typeof data?.note === "string" ? data.note.trim() : "";
-        if (!allowed.includes(next) || note.length > 500) return json({ error: "Invalid status" }, 400, headers);
+        const delayMinutes = next === "delayed" ? Number(data?.delay_minutes) : 0;
+        if (!allowed.includes(next) || note.length > 500 ||
+            (next === "delayed" && (!Number.isInteger(delayMinutes) || delayMinutes < 5 || delayMinutes > 240)))
+          return json({ error: "Invalid status or delay. Delays must be 5–240 whole minutes." }, 400, headers);
         const result = await withDb(env, async db => {
           await db.query("BEGIN");
           try {
@@ -321,10 +333,10 @@ export default {
             const current = existing.rows[0];
             const transitions = { pending:["accepted","rejected","delayed"],delayed:["accepted","rejected"],accepted:["preparing","rejected","delayed"],preparing:["ready_for_collection","out_for_delivery","delayed"],ready_for_collection:["completed"],out_for_delivery:["completed"] };
             if (!transitions[current.status]?.includes(next)) { await db.query("ROLLBACK"); return { status:409,error:"Invalid status transition" }; }
-            await db.query("UPDATE kc_orders SET status=$1,owner_note=$2,updated_at=now() WHERE id=$3",[next,note,current.id]);
+            await db.query("UPDATE kc_orders SET status=$1,owner_note=$2,delay_minutes=$3,updated_at=now() WHERE id=$4",[next,note,delayMinutes,current.id]);
             await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role,note) VALUES ($1,$2,$3,$4,'owner',$5)",[current.id,current.status,next,uid,note]);
             await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES ($1,$2,'order_status',$3,$4)",
-              [current.customer_subject,current.id,"Order "+current.order_number+" updated","Status: "+next]);
+              [current.customer_subject,current.id,"Order "+current.order_number+" updated","Status: "+next+(delayMinutes ? " · Estimated delay: "+delayMinutes+" minutes" : "")+(note ? " · "+note : "")]);
             await db.query("COMMIT");
             return { order: { id:current.id,status:next } };
           } catch (error) { await db.query("ROLLBACK").catch(() => {}); throw error; }
@@ -336,8 +348,12 @@ export default {
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, o.status, o.created_at,
-            o.customer_name, o.area, o.fulfillment_type, o.subtotal_cents,
-            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes
+            o.customer_name, o.customer_phone, o.delivery_address,
+            o.area, o.fulfillment_type, o.subtotal_cents,
+            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes,
+            COALESCE((SELECT json_agg(json_build_object(
+              'name',oi.item_name,'unit_price_cents',oi.unit_price_cents,'quantity',oi.quantity
+            ) ORDER BY oi.id) FROM kc_order_items oi WHERE oi.order_id=o.id),'[]'::json) AS items
           FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
           WHERE s.owner_subject=$1 ORDER BY o.created_at DESC LIMIT 100
         `, [uid]));
