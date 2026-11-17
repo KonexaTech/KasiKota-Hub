@@ -1,0 +1,7 @@
+{
+  "name": "kota-connect-api-dev",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true
+}
