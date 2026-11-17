@@ -1,3 +1,4 @@
+import { neonApi } from "./neon-api.js";
 import { privilegedRoute } from "./privileged.js";
 import { Client } from "pg";
 
@@ -66,8 +67,9 @@ export default {
     const origin = request.headers.get("origin");
     const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
     if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     const path = new URL(request.url).pathname;
+    if(env.NEON_ONLY_MODE==="true"&&path.startsWith("/api/")){try{const response=await neonApi(request,env,withDb);if(response){const result=new Response(response.body,response);Object.entries(headers).forEach(([key,value])=>result.headers.set(key,value));return result}}catch(error){console.error("Neon-only API failed",error?.message);return json({error:"API unavailable"},503,headers)}}
     if(request.method==="POST"&&path.startsWith("/api/")){try{const response=await privilegedRoute(request,env,verifiedFirebaseUser,withDb);if(response){const result=new Response(response.body,response);Object.entries(headers).forEach(([key,value])=>result.headers.set(key,value));return result}}catch(error){console.error("Privileged request failed",error?.message);return json({error:"Privileged service unavailable"},503,headers)}}
     if (request.method !== "GET") return json({ error: "Method not allowed" }, 405, headers);
     if (path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
