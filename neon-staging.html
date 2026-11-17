@@ -23,7 +23,8 @@ click("login",async()=>{const r=await auth.signIn.email({email:$("email").value,
 click("logout",async()=>{await auth.signOut();await identity();return "Signed out"});
 click("shops",async()=>{const data=await api("/api/shops","PUBLIC");$("shop").replaceChildren(new Option("Select a shop",""),...data.shops.map(s=>new Option(s.name+" — "+s.area,s.id)));return data});
 $("shop").addEventListener("change",async()=>{try{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","PUBLIC");$("menu").replaceChildren(new Option("Select a menu item",""),...data.items.map(i=>new Option(i.name+" — R"+(i.price_cents/100).toFixed(2),i.id)));say(data)}catch(e){say("Error: "+e.message)}});
-click("place",async()=>{const data=await api("/api/orders","POST",{shopId:$("shop").value,items:[{itemId:$("menu").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});$("orderId").value=data.order.id;return data});
+let checkoutRequestId=null;
+click("place",async()=>{if(!checkoutRequestId)checkoutRequestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId:checkoutRequestId,shopId:$("shop").value,items:[{itemId:$("menu").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});$("orderId").value=data.order.id;checkoutRequestId=null;return data});
 click("mine",()=>api("/api/orders/mine"));
 click("owner",()=>api("/api/owner/orders"));
 click("admin",()=>api("/api/admin/orders"));
