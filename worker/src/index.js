@@ -140,6 +140,32 @@ export default {
         ));
         return json({ applications: result.rows }, 200, headers);
       }
+      const approval = /^\/api\/admin\/shop-applications\/([0-9a-f-]{36})\/decision$/.exec(path);
+      if (request.method === "PATCH" && approval) {
+        if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
+        const admin = await verifiedUser(request, env);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        if (!["approved","rejected"].includes(data?.decision)) return json({ error: "Invalid decision" }, 400, headers);
+        const result = await withDb(env, async db => {
+          await db.query("BEGIN");
+          try {
+            const application = await db.query("UPDATE kc_shop_applications SET status=$1,reviewed_by_subject=$2,reviewed_at=now() WHERE id=$3 AND status='pending' RETURNING *",
+              [data.decision,admin,approval[1]]);
+            if (!application.rowCount) { await db.query("ROLLBACK"); return { status:409,error:"Application not pending" }; }
+            const a = application.rows[0];
+            if (data.decision === "approved") {
+              await db.query("INSERT INTO kc_shops(owner_subject,name,area,address,phone,approved) VALUES ($1,$2,$3,$4,$5,true)",
+                [a.applicant_subject,a.shop_name,a.area,a.address,a.phone]);
+            }
+            await db.query("INSERT INTO kc_notifications(recipient_subject,kind,title,body) VALUES ($1,'application_status',$2,$3)",
+              [a.applicant_subject,"Shop application "+data.decision,"Your application for "+a.shop_name+" was "+data.decision]);
+            await db.query("COMMIT");
+            return { application:{ id:a.id,status:data.decision } };
+          } catch (error) { await db.query("ROLLBACK").catch(() => {}); throw error; }
+        });
+        return json(result.status ? { error:result.error } : result,result.status || 200,headers);
+      }
       if (request.method === "GET" && path === "/api/notifications") {
         const uid = await verifiedUser(request, env);
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
