@@ -8,7 +8,7 @@
   "workers_dev": true,
   "vars": {
     "ALLOWED_ORIGIN": "https://siboniisozulu-alt.github.io",
-    "ALLOWED_ORIGINS": "https://siboniisozulu-alt.github.io,https://localhost,http://localhost",
+    "ALLOWED_ORIGINS": "https://siboniisozulu-alt.github.io,https://kota-connect-api-dev.siboniisozulu.workers.dev,https://localhost,http://localhost",
     "NEON_AUTH_BASE_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth",
     "NEON_AUTH_JWKS_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
   }
