@@ -1,0 +1,43 @@
+import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
+const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
+const auth=createAuthClient(AUTH_URL,{fetchOptions:{credentials:"include"}});
+const $=id=>document.getElementById(id), role=document.body.dataset.role;
+const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
+let requestId=null,menu=[];
+const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
+const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
+async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){const r=await auth.getSession();if(r.error)throw Error(r.error.message);if(!r.data?.session?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.session.token;}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
+function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
+async function showIdentity(){const r=await auth.getSession();$("identity").textContent=r.data?.user?.email||"Not signed in"}
+$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);await showIdentity();out("Signed in")})()});
+$("signup").onclick=safe(async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created")});
+$("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
+function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
+if(role==="customer"){
+bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
+$("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));out(data.items.length+" menu items")});
+$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});requestId=null;$("orderId").value=data.order.id;out(data)})()};
+bind("myOrders",async()=>out(await api("/api/orders/mine")));
+bind("track",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value))));
+bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items")));
+bind("timeline",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history")));
+}
+if(role==="owner"){
+bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
+bind("applications",async()=>out(await api("/api/shop-applications/mine")));
+bind("myShops",async()=>{const r=await api("/api/owner/shops");option($("shop"),r.shops,x=>x.name);out(r)});
+bind("myMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu")));
+bind("addMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu","POST",{name:$("itemName").value,priceCents:Math.round(Number($("price").value)*100)})));
+bind("myOrders",async()=>out(await api("/api/owner/orders")));
+bind("orderItems",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items")));
+bind("updateStatus",async()=>out(await api("/api/owner/orders/"+encodeURIComponent($("orderId").value)+"/status","PATCH",{status:$("status").value,note:$("note").value})));
+}
+if(role==="admin"){
+bind("applications",async()=>out(await api("/api/admin/shop-applications")));
+bind("approve",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"approved"})));
+bind("reject",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"rejected"})));
+bind("orders",async()=>out(await api("/api/admin/orders")));
+}
+bind("notifications",async()=>out(await api("/api/notifications")));
+bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
+showIdentity().catch(()=>{});
