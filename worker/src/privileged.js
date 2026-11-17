@@ -45,8 +45,8 @@ export async function privilegedRoute(request,env,verify,withDb){
   }
   if(path==="/api/notifications/register"){
     const token=String(data.token||"");if(token.length<40||token.length>4096)return reply({error:"Invalid device token"},400);
-    const owner=await withDb(env,async db=>(await db.query("SELECT 1 FROM kc_shops WHERE owner_subject=$1 LIMIT 1",[uid])).rowCount>0);
-    if(!owner)return reply({error:"Shop owner account required"},403);
+    const ownerDocs=await googleRequest(env,"https://firestore.googleapis.com/v1/projects/"+encodeURIComponent(env.FIREBASE_PROJECT_ID)+"/databases/(default)/documents:runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{from:[{collectionId:"shops"}],where:{fieldFilter:{field:{fieldPath:"ownerUid"},op:"EQUAL",value:{stringValue:uid}}},limit:25}})});
+    if(!Array.isArray(ownerDocs)||!ownerDocs.some(row=>field(row.document||{},"status")==="approved"))return reply({error:"Approved shop owner account required"},403);
     await withDb(env,db=>db.query("INSERT INTO kc_push_tokens (token,owner_subject,updated_at) VALUES ($1,$2,now()) ON CONFLICT(token) DO UPDATE SET owner_subject=EXCLUDED.owner_subject,updated_at=now()",[token,uid]));
     return reply({ok:true});
   }
