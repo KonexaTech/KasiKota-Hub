@@ -32,6 +32,12 @@ export default {
     const path = new URL(request.url).pathname;
     if (path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
     try {
+
+      if (path === "/api/health/db") {
+        // Deliberately omit database error details and connection metadata.
+        await withDb(env, db => db.query("SELECT 1 AS ok"));
+        return json({ status: "ok", database: "reachable" }, 200, headers);
+      }
       if (path === "/api/shops") {
         const rows = await withDb(env, db => db.query("SELECT id, name, area, address FROM kc_shops WHERE approved = true ORDER BY name LIMIT 100"));
         return json({ shops: rows.rows }, 200, headers);
