@@ -359,7 +359,7 @@ export default {
       return json({ error: "Not found" }, 404, headers);
     } catch (error) {
       console.error("Kota Connect API request failed", { path, error: error?.name || "UnknownError" });
-      return json({ error: "Database unavailable" }, 503, headers);
+      return json({ error: "Service temporarily unavailable" }, 503, headers);
     }
   }
 };
