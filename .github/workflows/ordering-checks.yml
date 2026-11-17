@@ -18,6 +18,7 @@ jobs:
           node --check worker/src/privileged.js
           node --check worker/src/neon-auth.js
           node --check worker/src/neon-api.js
+          node --input-type=module --check < neon-app.js
           node tests/browser-script-syntax.cjs
           node tests/ordering-static.test.cjs
           node --test tests/neon-security-static.test.cjs
