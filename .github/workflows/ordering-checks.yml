@@ -22,3 +22,4 @@ jobs:
           node tests/browser-script-syntax.cjs
           node tests/ordering-static.test.cjs
           node --test tests/neon-security-static.test.cjs
+          node scripts/audit-firebase-export.mjs tests/fixtures/firebase-export-sample.json
