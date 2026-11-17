@@ -54,7 +54,7 @@ for (const status of ["accepted","preparing","ready_for_collection","completed"]
   expect(await request("/api/owner/orders/"+orderId+"/status",env.owner,"PATCH",{status,note:"Release-gate staging test"}),200,"Owner can set "+status);
   tracked=expect(await request("/api/orders/"+orderId,env.customer),200,"Customer can refresh tracking after "+status);
   assert.equal(tracked.order.status,status,"Customer sees "+status);
-  assert.equal(tracked.order.history.at(-1).new_status,status,"Status history records "+status);
+  assert.equal(tracked.order.history.at(-1).new_status,status,"Status history records "+status);\n  const customerNotices=expect(await request("/api/notifications",env.customer),200,"Customer can load own status notifications");\n  assert.ok(customerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="order_status"),"Customer receives status-change notification");
 }
 
 const adminOrders=expect(await request("/api/admin/orders",env.admin),200,"Admin can monitor all orders");
@@ -64,7 +64,7 @@ assert.equal(adminOrder.status,"completed","Admin sees final order status");
 assert.ok(Array.isArray(adminOrder.items)&&adminOrder.items.length===1,"Admin sees line-item details");
 assert.ok(Array.isArray(adminOrder.history)&&adminOrder.history.length>=5,"Admin sees full status history");
 
-expect(await request("/api/orders/"+orderId,env.otherCustomer),404,"Other customer cannot read this order");
+expect(await request("/api/orders/"+orderId,env.otherCustomer),404,"Other customer cannot read this order");\nexpect(await request("/api/orders/"+orderId,null),401,"Unauthenticated user cannot track an order");\nexpect(await request("/api/orders",null,"POST",{}),401,"Unauthenticated user cannot create an order");
 expect(await request("/api/orders/"+orderId,env.otherOwner),404,"Other shop owner cannot read this order");
 expect(await request("/api/owner/orders/"+orderId+"/status",env.otherOwner,"PATCH",{status:"completed"}),404,"Other shop owner cannot update this order");
 expect(await request("/api/owner/orders/"+orderId+"/status",env.customer,"PATCH",{status:"completed"}),404,"Customer cannot update owner order status");
