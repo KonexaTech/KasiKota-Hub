@@ -267,6 +267,21 @@ export default {
         if (!result.rowCount) return json({ error: "Shop not found" }, 404, headers);
         return json({ item:result.rows[0] }, 201, headers);
       }
+      const menuEdit = /^\/api\/owner\/menu-items\/([0-9a-f-]{36})$/.exec(path);
+      if (request.method === "PATCH" && menuEdit) {
+        const uid = await verifiedUser(request, env);
+        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
+        let data;
+        try { data = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400, headers); }
+        if (typeof data?.available !== "boolean" || Object.keys(data).some(k => k !== "available"))
+          return json({ error: "Only availability can be updated" }, 400, headers);
+        const result = await withDb(env, db => db.query(
+          "UPDATE kc_menu_items m SET available=$1 FROM kc_shops s WHERE m.id=$2 AND m.shop_id=s.id AND s.owner_subject=$3 RETURNING m.id,m.available",
+          [data.available,menuEdit[1],uid]
+        ));
+        if (!result.rowCount) return json({ error:"Not found" },404,headers);
+        return json({ item:result.rows[0] },200,headers);
+      }
       if (request.method === "GET" && path === "/api/owner/shops") {
         const uid = await verifiedUser(request, env);
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
