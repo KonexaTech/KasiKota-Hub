@@ -277,7 +277,7 @@ export default {
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, async db => {
           const order = await db.query(
-            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_subject,o.customer_name,o.customer_phone,o.fulfillment_type,o.area,o.delivery_address,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.delay_minutes,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
+            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_name,o.customer_phone,o.fulfillment_type,o.area,o.delivery_address,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.delay_minutes,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
             [orderDetail[1],uid]
           );
           if (!order.rowCount) return null;
