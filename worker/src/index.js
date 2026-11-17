@@ -111,7 +111,7 @@ export default {
       }
       return json({ error: "Not found" }, 404, headers);
     } catch (error) {
-      console.error("Catalog API failed", error.message);
+      console.error("Kota Connect API request failed", { path, error: error?.name || "UnknownError" });
       return json({ error: "Database unavailable" }, 503, headers);
     }
   }
