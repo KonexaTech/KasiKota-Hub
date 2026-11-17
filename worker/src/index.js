@@ -8,10 +8,16 @@ import { Client } from "pg";
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 
+function allowedOrigin(origin, env) {
+  if (!origin) return null;
+  const allowed = (env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io")
+    .split(",").map(value => value.trim()).filter(Boolean);
+  return allowed.includes(origin) ? origin : null;
+}
 function cors(request, env) {
   const origin = request.headers.get("origin");
-  const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
-  return origin === allowed ? { "access-control-allow-origin": allowed, "vary": "Origin" } : {};
+  const allowed = allowedOrigin(origin, env);
+  return allowed ? { "access-control-allow-origin": allowed, "vary": "Origin" } : {};
 }
 
 async function withDb(env, callback) {
@@ -65,8 +71,7 @@ export default {
   async fetch(request, env) {
     const headers = cors(request, env);
     const origin = request.headers.get("origin");
-    const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
-    if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
+    if (origin && !allowedOrigin(origin, env)) return json({ error: "Origin not allowed" }, 403);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     if (!["GET","POST","PATCH"].includes(request.method)) return json({ error: "Method not allowed" }, 405, headers);
     const path = new URL(request.url).pathname;
