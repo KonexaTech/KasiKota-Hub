@@ -336,6 +336,8 @@ let shopsData = [];
 let ordersData = [];
 let busy = false;
 let stopAdminOrders = null;
+let approvedAdmin = false;
+const hasAdminAccess = () => Boolean(auth.currentUser && (auth.currentUser.uid === ADMIN_UID || approvedAdmin));
 
 const text = value =>
   value == null || value === "" ? "—" : String(value);
@@ -634,7 +636,7 @@ function renderCommission() {
 /* LOAD FIRESTORE DATA */
 
 async function loadData() {
-  if (!auth.currentUser || auth.currentUser.uid !== ADMIN_UID) {
+  if (!hasAdminAccess()) {
     return;
   }
 
@@ -683,7 +685,7 @@ async function loadData() {
     renderCommission();
 
     if(stopAdminOrders)stopAdminOrders();
-    stopAdminOrders=onSnapshot(collection(db,"orders"),snapshot=>{if(auth.currentUser?.uid!==ADMIN_UID)return;ordersData=snapshot.docs.map(d=>({id:d.id,data:d.data()}));$("count-orders").textContent=String(ordersData.length);renderOrders();renderCommission();message("page-message","Live order monitoring connected.","success")},error=>message("page-message","Live orders unavailable: "+error.message,"error"));
+    stopAdminOrders=onSnapshot(collection(db,"orders"),snapshot=>{if(!hasAdminAccess())return;ordersData=snapshot.docs.map(d=>({id:d.id,data:d.data()}));$("count-orders").textContent=String(ordersData.length);renderOrders();renderCommission();message("page-message","Live order monitoring connected.","success")},error=>message("page-message","Live orders unavailable: "+error.message,"error"));
     message("page-message", "Data refreshed successfully. Live order monitoring enabled.", "success");
   } catch (error) {
     message("page-message", errorText(error), "error");
@@ -866,7 +868,7 @@ $("neon-commission-refresh").addEventListener("click", async () => {
     return;
   }
   const user = auth.currentUser;
-  if (!user || user.uid !== ADMIN_UID) {
+  if (!user || !hasAdminAccess()) {
     status.textContent = "Administrator sign-in required.";
     return;
   }
@@ -908,8 +910,9 @@ for(const [buttonId,endpoint] of [["approve-admin","approve"],["revoke-admin","r
 
 /* VERIFY AUTHENTICATED ADMIN */
 
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
   if (!user) {
+    approvedAdmin=false;
     if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
@@ -917,7 +920,8 @@ onAuthStateChanged(auth, user => {
     return;
   }
 
-  if (user.uid !== ADMIN_UID) {
+  try{const claims=await user.getIdTokenResult(true);approvedAdmin=claims.claims.kotaAdmin===true}catch{approvedAdmin=false}
+  if (!hasAdminAccess()) {
     if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
     $("login-card").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
@@ -934,6 +938,7 @@ onAuthStateChanged(auth, user => {
 
   $("login-card").classList.add("hidden");
   $("dashboard").classList.remove("hidden");
+  for(const id of ["approve-admin","revoke-admin"])$(id).disabled=user.uid!==ADMIN_UID;
 
   $("signed-in-as").textContent =
     "Signed in as " + (user.email || "administrator") +
