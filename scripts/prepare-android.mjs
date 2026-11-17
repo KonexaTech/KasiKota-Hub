@@ -8,3 +8,5 @@ const output = source.replace(
 );
 await writeFile('www/index.html', output);
 await copyFile('icon-512.png', 'www/icon-512.png').catch(() => {});
+
+// Staging APK build pipeline revision: Android SDK components installed by workflow.
