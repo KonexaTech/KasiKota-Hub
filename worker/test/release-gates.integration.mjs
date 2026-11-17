@@ -59,9 +59,21 @@ for (const status of ["accepted","preparing","ready_for_collection","completed"]
   assert.ok(customerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="order_status"),"Customer receives status-change notification");
 }
 
+const rejectedCreated=expect(await request("/api/orders",env.customer,"POST",{
+  shop_id:env.shop,customer_name:"Kota Connect rejection test",customer_phone:"0000000000",
+  area:"Staging test area",fulfillment_type:"pickup",
+  items:[{menu_item_id:env.menu,quantity:1}]
+}),201,"Customer can create a second order for rejection test");
+const rejectedId=rejectedCreated.order?.id;
+assert.ok(rejectedId,"Rejection test order returns an ID");
+expect(await request("/api/owner/orders/"+rejectedId+"/status",env.owner,"PATCH",{status:"rejected",note:"Staging rejection test"}),200,"Owner can reject an order");
+const rejectedTrack=expect(await request("/api/orders/"+rejectedId,env.customer),200,"Customer can view rejected order");
+assert.equal(rejectedTrack.order.status,"rejected","Customer sees rejected status");
+assert.equal(rejectedTrack.order.history.at(-1).new_status,"rejected","Rejected status is recorded");
+
 const adminOrders=expect(await request("/api/admin/orders",env.admin),200,"Admin can monitor all orders");
 const adminOrder=adminOrders.orders.find(o=>o.id===orderId);
-assert.ok(adminOrder,"Admin can see the completed order");
+assert.ok(adminOrder,"Admin can see the completed order");\nassert.ok(adminOrders.orders.some(o=>o.id===rejectedId&&o.status==="rejected"),"Admin can see rejected orders too");
 assert.equal(adminOrder.status,"completed","Admin sees final order status");
 assert.ok(Array.isArray(adminOrder.items)&&adminOrder.items.length===1,"Admin sees line-item details");
 assert.ok(Array.isArray(adminOrder.history)&&adminOrder.history.length>=5,"Admin sees full status history");
