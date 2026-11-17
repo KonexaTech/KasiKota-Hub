@@ -11,7 +11,7 @@ const checks=[
 ["owner opt-in browser alerts",owner.includes("Notification.requestPermission()")&&owner.includes("new Notification(")],
 ["owner status updates",owner.includes('updateDoc(')],
 ["admin registration",admin.includes('createUserWithEmailAndPassword')],
-["admin UID gate",admin.includes('user.uid !== ADMIN_UID')],
+["admin UID gate",admin.includes('user.uid === ADMIN_UID || approvedAdmin')&&admin.includes('claims.claims.kotaAdmin===true')],
 ["admin live order monitoring",admin.includes('stopAdminOrders=onSnapshot')],
 ["tracking document listener",tracking.includes('onSnapshot(doc(db,"orders",id)')],
 ["tracking customer check",tracking.includes('customerUid!==auth.currentUser?.uid')],
