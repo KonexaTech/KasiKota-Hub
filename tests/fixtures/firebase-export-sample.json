@@ -1,0 +1,25 @@
+{
+  "shops": [
+    {
+      "id": "firebase-shop-1",
+      "ownerUid": "firebase-owner-1",
+      "shopName": "Example",
+      "approved": true
+    }
+  ],
+  "shopApplications": [],
+  "orders": [
+    {
+      "id": "firebase-order-1",
+      "orderNumber": "KC-TEST-1",
+      "shopId": "firebase-shop-1",
+      "items": [
+        {
+          "name": "Kota",
+          "quantity": 1
+        }
+      ],
+      "orderStatus": "completed"
+    }
+  ]
+}
