@@ -25,8 +25,8 @@ const checks=[
 ["push idempotency",privileged.includes('ON CONFLICT DO NOTHING')],
 ["owner background push registration",owner.includes('getToken(getMessaging(app)')],
 ["FCM background worker",pushSw.includes('firebase.messaging()')],
-["trusted Worker routes",worker.includes('privilegedRoute(request,env')]
+["legacy Firebase privileged routes not exposed through Neon Worker",!worker.includes('privilegedRoute(request,env') && !worker.includes('from "./privileged.js"')
 ];
 let failed=0;for(const [name,ok] of checks){console.log((ok?"PASS":"FAIL")+" "+name);if(!ok)failed++}
 assert.equal(failed,0,failed+" static checks failed");
-console.log("Static checks passed. Firebase rules, real notifications and device acceptance remain unverified.");
+console.log("Static checks passed. Firebase privileged routes remain disconnected from Neon Worker; admin approval, push delivery, rules and device acceptance remain unverified.");
