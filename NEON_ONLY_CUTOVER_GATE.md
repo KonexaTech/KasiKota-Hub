@@ -27,3 +27,10 @@ Status: **DEVELOPMENT ONLY — NOT APPROVED FOR PUBLIC CUTOVER**.
 
 ## Safety gate
 Do not delete Firebase records, disable working Firebase sign-in, or point production at a staging database. Do not claim a Neon-only launch until all required tests pass.
+
+## Verified staging inventory — 2026-11-18 (read-only Neon query)
+Neon development branch `br-restless-dew-zagey7le` contains: **1 shop, 1 menu item, 0 orders, 0 order items, 0 applications, 0 notifications, 1 administrator**. These are Neon development counts, **not** a migration reconciliation against Firebase.
+
+A Firebase export with shops, shopApplications, orders, and menu details has **not** been supplied or independently retrieved. Consequently existing Firebase shop/customer/order preservation cannot yet be verified. The existing read-only export auditor is `node scripts/audit-firebase-export.mjs <export.json>`. It detects duplicate identifiers, orphan orders, missing owners, and missing shop references; customer and owner identity mapping to Neon Auth still requires explicit re-enrollment or a verified mapping process.
+
+**No production migration, Firebase record deletion, or Neon production data change has been performed.** Keep production cutover blocked until export counts, menu prices, identity mapping, transaction totals and rollback evidence reconcile. Closed-app notifications also remain unverified after retiring Firebase FCM.
