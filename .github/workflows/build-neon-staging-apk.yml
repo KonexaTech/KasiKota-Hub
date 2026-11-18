@@ -28,9 +28,36 @@ jobs:
         run: |
           sed -i 's/minSdkVersion = [0-9][0-9]*/minSdkVersion = 26/' variables.gradle
           grep -q 'minSdkVersion = 26' variables.gradle
-      - name: Build debug APK
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: neon-android-gradle-${{ runner.os }}-${{ hashFiles('android-staging/package-lock.json') }}
+          restore-keys: |
+            neon-android-gradle-${{ runner.os }}-
+      - name: Remove unused Firebase Google Services plugin
         working-directory: android-staging/android
-        run: chmod +x gradlew && ./gradlew assembleDebug
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for filename in ('build.gradle','app/build.gradle'):
+              p=Path(filename)
+              if not p.exists(): continue
+              s=p.read_text()
+              lines=[line for line in s.splitlines(keepends=True) if not ('com.google.gms:google-services' in line or 'apply plugin: \'com.google.gms.google-services\'' in line or 'id \'com.google.gms.google-services\'' in line)]
+              p.write_text(''.join(lines))
+          PY
+      - name: Build debug APK with bounded dependency retries
+        working-directory: android-staging/android
+        run: |
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon --max-workers=2 assembleDebug; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 45))
+          done
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
