@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kota Connect — Neon Staging</title><link rel="stylesheet" href="./premium.css"><style>body{max-width:780px;margin:auto;padding:1rem;font-family:system-ui}label{display:block;margin:.7rem 0}input,select,button{padding:.65rem;max-width:100%}section{border:1px solid #ddd;border-radius:12px;padding:1rem;margin:1rem 0}#notice{white-space:pre-wrap}button{margin:.3rem}</style></head>
+<body><h1>Kota Connect — Neon staging</h1><p><strong>Development only.</strong> This page does not use Firebase. It requires the Neon development Worker to be deployed and configured.</p>
+<section><h2>Development connection</h2><label>Staging Worker HTTPS URL <input id="worker" type="url" placeholder="https://kota-connect-api-dev.example.workers.dev" size="46"></label><p>The Neon Auth development URL is configured in this page; no database credentials are stored in the browser.</p></section>
+<section><h2>Neon account</h2><label>Email <input id="email" type="email" autocomplete="email"></label><label>Password <input id="password" type="password" autocomplete="current-password"></label><button id="register">Create test account</button><button id="login">Sign in</button><button id="logout">Sign out</button><p id="identity">Not signed in</p></section>
+<section><h2>Customer</h2><button id="shops">Load approved shops</button><label>Shop <select id="shop"><option value="">Select a shop</option></select></label><label>Menu item <select id="menu"><option value="">Select a menu item</option></select></label><label>Quantity <input id="quantity" type="number" min="1" max="50" value="1"></label><label>Customer name <input id="customerName"></label><label>Customer phone <input id="customerPhone" type="tel"></label><label>Area <input id="area" value="Newcastle"></label><label>Fulfillment <select id="fulfillment"><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select></label><label>Delivery address <input id="address"></label><button id="place">Place staging test order</button><button id="mine">My orders</button></section>
+<section><h2>Owner and administrator</h2><button id="owner">Load my shop orders</button><button id="admin">Load admin orders (requires database role)</button><label>Order ID <input id="orderId" placeholder="UUID"></label><button id="track">Track order</button><button id="history">Order status history</button><button id="items">Order items</button><label>Next status <select id="status"><option>accepted</option><option>preparing</option><option>ready_for_collection</option><option>out_for_delivery</option><option>completed</option><option>rejected</option><option>delayed</option></select></label><button id="update">Update owner order status</button></section>
+<section><h2>Shop applications and menus</h2><label>Owner name <input id="ownerName"></label><label>Shop name <input id="shopName"></label><label>Shop phone <input id="shopPhone" type="tel"></label><label>Shop address <input id="shopAddress"></label><label>Shop description <input id="shopDescription"></label><button id="apply">Submit shop application</button><button id="applications">My applications</button><button id="pending">Admin: list applications</button><label>Application ID <input id="applicationId" placeholder="UUID"></label><button id="approve">Admin: approve application</button><button id="reject">Admin: reject application</button><button id="ownerShops">My owned shops</button><label>Owned shop ID <input id="ownedShopId" placeholder="UUID"></label><button id="ownedMenu">My shop menu</button><label>New menu item name <input id="newMenuName"></label><label>Price (rand) <input id="newMenuPrice" type="number" min=".01" step=".01"></label><button id="addMenu">Add menu item</button></section>
+<section><h2>In-app notifications</h2><button id="notifications">Load my notifications</button><label>Notification ID <input id="notificationId" placeholder="UUID"></label><button id="readNotification">Mark notification read</button></section>
+<section><h2>Results</h2><pre id="notice" role="status">Ready.</pre></section>
+<script type="module">
+import { createAuthClient } from "https://esm.sh/@neon/neon-js@latest/auth";
+const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
+const auth=createAuthClient(AUTH_URL);
+const $=id=>document.getElementById(id),say=value=>$("notice").textContent=typeof value==="string"?value:JSON.stringify(value,null,2);
+async function session(){const r=await auth.getSession();if(r.error)throw Error(r.error.message);return r.data}
+async function token(){const s=await session();if(!s?.session?.token)throw Error("Sign in first");return s.session.token}
+async function api(path,method="GET",body){const base=$("worker").value.trim().replace(/\/$/,"");if(!/^https:\/\//.test(base))throw Error("Enter a secure staging Worker URL");const headers={"content-type":"application/json"};if(method!=="PUBLIC")headers.authorization="Bearer "+await token();const response=await fetch(base+path,{method:method==="PUBLIC"?"GET":method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"HTTP "+response.status);return data}
+function click(id,action){$(id).addEventListener("click",async()=>{try{say(await action())}catch(e){say("Error: "+e.message)}})}
+async function identity(){const s=await session();$("identity").textContent=s?.user?.email||"Not signed in"}
+click("register",async()=>{const r=await auth.signUp.email({name:$("email").value.split("@")[0],email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);await identity();return "Account registered; check your Neon Auth email settings before production use"});
+click("login",async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);await identity();return "Signed in"});
+click("logout",async()=>{await auth.signOut();await identity();return "Signed out"});
+click("shops",async()=>{const data=await api("/api/shops","PUBLIC");$("shop").replaceChildren(new Option("Select a shop",""),...data.shops.map(s=>new Option(s.name+" — "+s.area,s.id)));return data});
+$("shop").addEventListener("change",async()=>{try{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","PUBLIC");$("menu").replaceChildren(new Option("Select a menu item",""),...data.items.map(i=>new Option(i.name+" — R"+(i.price_cents/100).toFixed(2),i.id)));say(data)}catch(e){say("Error: "+e.message)}});
+let checkoutRequestId=null;
+click("place",async()=>{if(!checkoutRequestId)checkoutRequestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId:checkoutRequestId,shopId:$("shop").value,items:[{itemId:$("menu").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});$("orderId").value=data.order.id;checkoutRequestId=null;return data});
+click("mine",()=>api("/api/orders/mine"));
+click("owner",()=>api("/api/owner/orders"));
+click("admin",()=>api("/api/admin/orders"));
+click("track",()=>api("/api/orders/"+encodeURIComponent($("orderId").value)));
+click("history",()=>api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history"));
+click("items",()=>api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items"));
+click("update",()=>api("/api/owner/orders/"+encodeURIComponent($("orderId").value)+"/status","PATCH",{status:$("status").value}));
+click("apply",()=>api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("shopPhone").value,area:$("area").value,address:$("shopAddress").value,description:$("shopDescription").value}));
+click("applications",()=>api("/api/shop-applications/mine"));
+click("pending",()=>api("/api/admin/shop-applications"));
+click("approve",()=>api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"approved"}));
+click("reject",()=>api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"rejected"}));
+click("ownerShops",()=>api("/api/owner/shops"));
+click("ownedMenu",()=>api("/api/owner/shops/"+encodeURIComponent($("ownedShopId").value)+"/menu"));
+click("addMenu",()=>api("/api/owner/shops/"+encodeURIComponent($("ownedShopId").value)+"/menu","POST",{name:$("newMenuName").value,priceCents:Math.round(Number($("newMenuPrice").value)*100)}));
+click("notifications",()=>api("/api/notifications"));
+click("readNotification",()=>api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH"));
+identity().catch(()=>{});
+</script></body></html>
