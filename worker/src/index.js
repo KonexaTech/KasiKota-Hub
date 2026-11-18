@@ -103,6 +103,7 @@ export default {
       return json({message:"If the account exists, a reset email has been sent."},200,headers);
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+
     try {
 
       if (request.method === "GET" && path === "/api/health/db") {
