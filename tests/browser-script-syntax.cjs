@@ -4,10 +4,10 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),"kota-browser-syntax-"));
 try {
   for(const file of files) {
     const html=fs.readFileSync(file,"utf8");
-    const matches=[...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];
+    const matches=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
     let count=0;
     for(const [,attrs,body] of matches) {
-      if(!body.trim()||/\\bsrc\\s*=/.test(attrs))continue;
+      if(!body.trim()||/\bsrc\s*=/.test(attrs))continue;
       const target=path.join(dir,path.basename(file)+"-"+count+(attrs.includes("module")?".mjs":".cjs"));
       fs.writeFileSync(target,body);
       execFileSync(process.execPath,["--check",target],{stdio:"pipe"});
