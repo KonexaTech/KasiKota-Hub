@@ -1,4 +1,5 @@
 <!doctype html>
+feature/neon-only-cutover
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kota Connect — Neon Staging</title><link rel="stylesheet" href="./premium.css"><style>body{max-width:780px;margin:auto;padding:1rem;font-family:system-ui}label{display:block;margin:.7rem 0}input,select,button{padding:.65rem;max-width:100%}section{border:1px solid #ddd;border-radius:12px;padding:1rem;margin:1rem 0}#notice{white-space:pre-wrap}button{margin:.3rem}</style></head>
 <body><h1>Kota Connect — Neon staging</h1><p><strong>Development only.</strong> This page does not use Firebase. It requires the Neon development Worker to be deployed and configured.</p>
 <section><h2>Development connection</h2><label>Staging Worker HTTPS URL <input id="worker" type="url" placeholder="https://kota-connect-api-dev.example.workers.dev" size="46"></label><p>The Neon Auth development URL is configured in this page; no database credentials are stored in the browser.</p></section>
@@ -43,4 +44,58 @@ click("addMenu",()=>api("/api/owner/shops/"+encodeURIComponent($("ownedShopId").
 click("notifications",()=>api("/api/notifications"));
 click("readNotification",()=>api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH"));
 identity().catch(()=>{});
+
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kota Connect — Neon Staging</title>
+<style>body{font:16px system-ui;background:#f7f8f3;color:#183c2a;margin:0}header{background:#176b42;color:white;padding:18px}main{max-width:900px;margin:auto;padding:16px}section{background:white;border:1px solid #dce6db;border-radius:12px;padding:16px;margin:14px 0}label{display:block;margin:8px 0}input,select,textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #9caa9c;border-radius:6px}button{background:#176b42;color:white;border:0;border-radius:6px;padding:10px;margin:6px 5px 6px 0;cursor:pointer}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f0f5ee;padding:10px;border-radius:6px}small{color:#5a665e}h2{margin-top:0}.hidden{display:none}</style>
+</head><body><header><h1>Kota Connect — Neon staging</h1><small style="color:white">Test environment only. No Firebase or WhatsApp orders.</small></header>
+<main>
+<section><h2>1. Sign in or register</h2><label>Name <input id="name" autocomplete="name"></label><label>Email <input id="email" type="email" autocomplete="email"></label><label>Password <input id="password" type="password" autocomplete="current-password"></label><button id="register">Register</button><button id="login">Sign in</button><button id="logout">Sign out</button><a href="neon-password-reset.html">Forgot / set password</a><p id="session">Not signed in</p></section>
+<section><h2>2. Register a real shop</h2><label>Owner name<input id="owner_name"></label><label>Shop name<input id="shop_name"></label><label>Phone<input id="phone"></label><label>Area<input id="shop_area" value="Madadeni"></label><label>Street address<input id="address"></label><label>Description<textarea id="description"></textarea></label><button id="apply">Submit shop application</button><button id="myapps">My applications</button><pre id="applications"></pre></section>
+<section><h2>3. Admin: approve shops and monitor orders</h2><button id="adminapps">View pending applications</button><pre id="admin_applications"></pre><label>Application ID<input id="application_id"></label><button id="approve">Approve application</button><button id="reject">Reject application</button><button id="adminorders">View all orders</button><pre id="admin_orders"></pre></section>
+<section><h2>4. Owner: menu and incoming orders</h2><button id="myshops">My shops</button><pre id="owner_shops"></pre><label>My shop ID<input id="owner_shop_id"></label><label>Menu item name<input id="menu_name"></label><label>Price (rand)<input id="menu_price" type="number" min=".01" step=".01"></label><button id="addmenu">Add menu item</button><button id="ownerorders">Incoming orders</button><pre id="owner_orders"></pre><label>Order ID<input id="owner_order_id"></label><label>Delay minutes (only when status is delayed)<input id="delay_minutes" type="number" min="5" max="240" step="5" value="15"></label><label>Status<select id="status"><option>accepted</option><option>preparing</option><option>ready_for_collection</option><option>out_for_delivery</option><option>completed</option><option>rejected</option><option>delayed</option></select></label><button id="updatestatus">Update order status</button></section>
+<section><h2>5. Customer: order and track</h2><button id="loadshops">Find approved shops</button><label>Shop<select id="shop"></select></label><button id="loadmenu">Load menu</button><div id="menu"></div><label>Customer name<input id="customer_name"></label><label>Customer phone<input id="customer_phone"></label><label>Area<input id="customer_area" value="Madadeni"></label><button id="checkout">Place pickup order</button><button id="myorders">My orders</button><label>Order ID<input id="track_id"></label><button id="track">Track order</button><pre id="customer_orders"></pre></section>
+<section><h2>6. In-app notifications</h2><button id="notifications">Refresh notifications</button><pre id="notification_list"></pre><p><small>Notifications are retrieved when you refresh. Background Android push is not yet implemented.</small></p></section>
+<section><h2>Test output</h2><pre id="output">Waiting for actions.</pre></section>
+</main>
+<script type="module">
+import { createAuthClient } from "https://esm.sh/@neon/auth";
+const authUrl = "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
+const auth = createAuthClient(authUrl);
+const $ = id => document.getElementById(id);
+const value = id => $(id).value.trim();
+const output = (data, id="output") => { $(id).textContent = JSON.stringify(data,null,2); };
+const apiBase = new URLSearchParams(location.search).get("api") || "https://kota-connect-api-dev.siboniisozulu.workers.dev";
+if (!apiBase || !/^https:\/\//.test(apiBase)) output({error:"Staging API not configured. Open this page with ?api=https://YOUR-STAGING-WORKER.workers.dev"});
+async function api(path,method="GET",body) {
+  if (!apiBase || !/^https:\/\//.test(apiBase)) throw Error("Staging API URL required");
+  const {data,error} = await auth.token();
+  if (error || !data?.token) throw Error("Sign in first");
+  const response = await fetch(apiBase.replace(/\/$/,"")+path,{method,headers:{"authorization":"Bearer "+data.token,"content-type":"application/json"},body:body?JSON.stringify(body):undefined});
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error || "Request failed: "+response.status);
+  return result;
+}
+function bind(id,fn) { $(id).onclick=async()=>{ $(id).disabled=true;try{await fn()}catch(e){output({error:e.message})}finally{$(id).disabled=false} }; }
+async function session(){const {data}=await auth.getSession();$("session").textContent=data?.user?("Signed in: "+data.user.email):"Not signed in";}
+bind("register",async()=>{const r=await auth.signUp.email({name:value("name"),email:value("email"),password:value("password")});if(r.error)throw Error(r.error.message);await session();output({registration:"completed"})});
+bind("login",async()=>{const r=await auth.signIn.email({email:value("email"),password:value("password")});if(r.error)throw Error(r.error.message);await session();output({login:"completed"})});
+bind("logout",async()=>{await auth.signOut();await session()});
+bind("apply",async()=>output(await api("/api/shop-applications","POST",{owner_name:value("owner_name"),shop_name:value("shop_name"),phone:value("phone"),area:value("shop_area"),address:value("address"),description:value("description")})));
+bind("myapps",async()=>output(await api("/api/my/shop-applications"),"applications"));
+bind("adminapps",async()=>output(await api("/api/admin/shop-applications"),"admin_applications"));
+for(const decision of ["approved","rejected"])bind(decision==="approved"?"approve":"reject",async()=>output(await api("/api/admin/shop-applications/"+encodeURIComponent(value("application_id"))+"/decision","PATCH",{decision})));
+let watchAdmin=false,watchOwner=false,watchNotifications=false,trackedOrderId="";\nasync function refreshAdmin(){output(await api("/api/admin/orders"),"admin_orders")}\nasync function refreshOwner(){output(await api("/api/owner/orders"),"owner_orders")}\nasync function refreshNotifications(){output(await api("/api/notifications"),"notification_list")}\nasync function refreshTracking(){if(trackedOrderId)output(await api("/api/orders/"+encodeURIComponent(trackedOrderId)),"customer_orders")}\nbind("adminorders",async()=>{watchAdmin=true;await refreshAdmin()});
+bind("myshops",async()=>output(await api("/api/owner/shops"),"owner_shops"));
+bind("addmenu",async()=>{const price=Number(value("menu_price"));if(!Number.isFinite(price)||Math.round(price*100)!==price*100)throw Error("Enter a price with up to two decimal places");output(await api("/api/owner/shops/"+encodeURIComponent(value("owner_shop_id"))+"/menu","POST",{name:value("menu_name"),price_cents:Math.round(price*100)}))});
+bind("ownerorders",async()=>{watchOwner=true;await refreshOwner()});
+bind("updatestatus",async()=>output(await api("/api/owner/orders/"+encodeURIComponent(value("owner_order_id"))+"/status","PATCH",{status:value("status"),delay_minutes:Number(value("delay_minutes")),note:"Updated from owner staging dashboard"})));
+bind("loadshops",async()=>{const r=await api("/api/shops");$("shop").replaceChildren(...r.shops.map(s=>new Option(s.name+" — "+s.area,s.id)));output(r)});
+bind("loadmenu",async()=>{const r=await api("/api/shops/"+encodeURIComponent(value("shop"))+"/menu");$("menu").replaceChildren(...r.items.map(i=>{const l=document.createElement("label");l.textContent=i.name+" — R"+(i.price_cents/100).toFixed(2);const input=document.createElement("input");input.type="number";input.min="0";input.max="50";input.value="0";input.dataset.menuId=i.id;l.append(input);return l}));output(r)});
+bind("checkout",async()=>{const items=[...$("menu").querySelectorAll("input")].map(i=>({menu_item_id:i.dataset.menuId,quantity:Number(i.value)})).filter(i=>i.quantity>0);const r=await api("/api/orders","POST",{shop_id:value("shop"),customer_name:value("customer_name"),customer_phone:value("customer_phone"),area:value("customer_area"),fulfillment_type:"pickup",items});$("track_id").value=r.order.id;output(r)});
+bind("myorders",async()=>output(await api("/api/my/orders"),"customer_orders"));
+bind("track",async()=>{trackedOrderId=value("track_id");await refreshTracking()});
+bind("notifications",async()=>{watchNotifications=true;await refreshNotifications()});\n// Keep active customer tracking and owner/admin order panels current without manual refresh.\nsetInterval(async()=>{try{const {data}=await auth.getSession();if(!data?.user)return;const jobs=[refreshTracking()];if(watchOwner)jobs.push(refreshOwner());if(watchAdmin)jobs.push(refreshAdmin());if(watchNotifications)jobs.push(refreshNotifications());await Promise.all(jobs)}catch(e){output({error:e.message})}},5000);
+session().catch(e=>output({error:e.message}));
+
 </script></body></html>

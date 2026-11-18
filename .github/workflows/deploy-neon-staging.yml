@@ -1,3 +1,4 @@
+ feature/neon-only-cutover
 name: Deploy Neon-only staging Worker
 on:
   workflow_dispatch:
@@ -58,3 +59,53 @@ jobs:
           if(!preflight.ok||preflight.headers.get("access-control-allow-origin")!=="https://siboniisozulu-alt.github.io")throw Error("Browser CORS preflight failed");
           console.log("Live anonymous staging API checks passed; authenticated E2E still required");
           NODE
+
+name: Deploy Kota Connect Neon staging API
+on:
+  push:
+    branches:
+      - feature/neon-only-api-auth
+      - fix/six-release-gates-neon-staging
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-neon-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check required deployment secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: 74fdd987dfadfdbb7322d9fc7f705499
+          NEON_DB: ${{ secrets.KOTA_NEON_DEV_DATABASE_URL }}
+        run: |
+          test -n "$CF_TOKEN" && test -n "$NEON_DB" || { echo 'Missing CLOUDFLARE_API_TOKEN or KOTA_NEON_DEV_DATABASE_URL secret'; exit 1; }
+          [[ "$CF_ACCOUNT" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Configured Cloudflare account ID is malformed'; exit 1; }
+      - name: Install and check Worker
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Deploy isolated staging Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 74fdd987dfadfdbb7322d9fc7f705499
+        run: npx wrangler deploy
+      - name: Configure Neon development database secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 74fdd987dfadfdbb7322d9fc7f705499
+          NEON_DB: ${{ secrets.KOTA_NEON_DEV_DATABASE_URL }}
+        run: printf '%s' "$NEON_DB" | npx wrangler secret put DATABASE_URL
+ main
