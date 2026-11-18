@@ -5,12 +5,14 @@ const $=id=>document.getElementById(id), role=document.body.dataset.role;
 const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
 let requestId=null,menu=[],cart=[];
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
-const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
+const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+(e?.message||"Request failed. Please try again."))}};
+function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
+async function verifyAdminAccess(){if(role!=="admin")return;try{await api("/api/admin/orders");out("Signed in. Administrator access verified.")}catch(e){out("Signed in, but administrator access could not be verified: "+e.message+". Your account must be assigned the administrator role in Neon.")}}
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){const r=await auth.getSession();if(r.error)throw Error(r.error.message);if(!r.data?.session?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.session.token;}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){const r=await auth.getSession();$("identity").textContent=r.data?.user?.email||"Not signed in"}
-$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);await showIdentity();out("Signed in")})()});
-$("signup").onclick=safe(async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created")});
+$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="admin")await verifyAdminAccess();else out("Signed in")})()});
+$("signup").onclick=safe(async()=>{const email=required("email","Email");required("password","Password");const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out(role==="admin"?"Account created. Administrator access requires an existing administrator to assign your account the admin role.":"Account created")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
 function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
 if(role==="customer"){
@@ -37,12 +39,12 @@ bind("updateStatus",async()=>out(await api("/api/owner/orders/"+encodeURICompone
 }
 if(role==="admin"){
 bind("applications",async()=>out(await api("/api/admin/shop-applications")));
-bind("approve",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"approved"})));
-bind("reject",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"rejected"})));
+bind("approve",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent(required("applicationId","Application ID"))+"/review","PATCH",{status:"approved"})));
+bind("reject",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent(required("applicationId","Application ID"))+"/review","PATCH",{status:"rejected"})));
 bind("orders",async()=>out(await api("/api/admin/orders")));
 }
 bind("notifications",async()=>out(await api("/api/notifications")));
-bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
+bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent(required("notificationId","Notification ID"))+"/read","PATCH")));
 async function pollNotifications(){if(document.visibilityState!=="visible")return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
 showIdentity().then(pollNotifications).catch(()=>{});
 setInterval(pollNotifications,20000);
