@@ -1,0 +1,66 @@
+name: Build Neon staging Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/neon-only-cutover
+jobs:
+  android-debug:
+    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        working-directory: android-staging
+        run: npm install --no-audit --no-fund
+      - name: Generate Capacitor Android project
+        working-directory: android-staging
+        run: npm run build:android
+      - name: Require Android 8.0 or later
+        working-directory: android-staging/android
+        run: |
+          sed -i 's/minSdkVersion = [0-9][0-9]*/minSdkVersion = 26/' variables.gradle
+          grep -q 'minSdkVersion = 26' variables.gradle
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: neon-android-gradle-${{ runner.os }}-${{ hashFiles('android-staging/package-lock.json') }}
+          restore-keys: |
+            neon-android-gradle-${{ runner.os }}-
+      - name: Remove unused Firebase Google Services plugin
+        working-directory: android-staging/android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for filename in ('build.gradle','app/build.gradle'):
+              p=Path(filename)
+              if not p.exists(): continue
+              s=p.read_text()
+              lines=[line for line in s.splitlines(keepends=True) if not ('com.google.gms:google-services' in line or 'apply plugin: \'com.google.gms.google-services\'' in line or 'id \'com.google.gms.google-services\'' in line)]
+              p.write_text(''.join(lines))
+          PY
+      - name: Build debug APK with bounded dependency retries
+        working-directory: android-staging/android
+        run: |
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon --max-workers=2 assembleDebug; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 45))
+          done
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kota-connect-neon-staging-debug-apk
+          path: android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

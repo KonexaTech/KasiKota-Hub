@@ -1,48 +1,60 @@
-name: Deploy Kota Connect Neon staging API
+name: Deploy Neon-only staging Worker
 on:
+  workflow_dispatch:
   push:
     branches:
-      - feature/neon-only-api-auth
-      - fix/six-release-gates-neon-staging
+      - feature/neon-only-cutover
     paths:
       - 'worker/**'
       - '.github/workflows/deploy-neon-staging.yml'
-  workflow_dispatch:
-permissions:
-  contents: read
 jobs:
-  deploy-staging:
+  staging:
+    if: github.ref == 'refs/heads/feature/neon-only-cutover'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: worker
+    environment: neon-staging
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check required deployment secrets
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: 74fdd987dfadfdbb7322d9fc7f705499
-          NEON_DB: ${{ secrets.KOTA_NEON_DEV_DATABASE_URL }}
+      - name: Check Worker source
         run: |
-          test -n "$CF_TOKEN" && test -n "$NEON_DB" || { echo 'Missing CLOUDFLARE_API_TOKEN or KOTA_NEON_DEV_DATABASE_URL secret'; exit 1; }
-          [[ "$CF_ACCOUNT" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Configured Cloudflare account ID is malformed'; exit 1; }
-      - name: Install and check Worker
-        run: |
-          npm install --no-audit --no-fund
-          npm run check
-      - name: Deploy isolated staging Worker
+          node --check worker/src/index.js
+          node --check worker/src/neon-auth.js
+          node --check worker/src/neon-api.js
+          node --test tests/neon-security-static.test.cjs
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm install --no-audit --no-fund
+      - name: Deploy development Worker only
+        working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: 74fdd987dfadfdbb7322d9fc7f705499
-        run: npx wrangler deploy
-      - name: Configure Neon development database secret
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: 74fdd987dfadfdbb7322d9fc7f705499
-          NEON_DB: ${{ secrets.KOTA_NEON_DEV_DATABASE_URL }}
-        run: printf '%s' "$NEON_DB" | npx wrangler secret put DATABASE_URL
+          CLOUDFLARE_ACCOUNT_ID: "74fdd987dfadfdbb7322d9fc7f705499"
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing staging Cloudflare token"; exit 1; }
+          npx wrangler deploy
+      - name: Verify Neon staging health
+        run: |
+          curl --silent --show-error https://kota-connect-api-dev.siboniisozulu.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!x.ok||x.backend!=="neon"||!x.authConfigured){console.error("Neon health failed:",JSON.stringify(x));process.exit(1)}console.log("Neon staging health passed")})'
+
+      - name: Verify anonymous staging API access controls
+        run: |
+          node --input-type=module <<'NODE'
+          const base="https://kota-connect-api-dev.siboniisozulu.workers.dev";
+          const health=await fetch(base+"/api/health");
+          if(health.status!==200)throw Error("Health HTTP "+health.status);
+          const h=await health.json();
+          if(h.ok!==true||h.backend!=="neon"||!h.authConfigured)throw Error("Neon health invalid");
+          const catalog=await fetch(base+"/api/shops");
+          if(catalog.status!==200)throw Error("Catalog HTTP "+catalog.status);
+          const shops=await catalog.json();
+          if(!Array.isArray(shops.shops))throw Error("Catalog missing shops");
+          for(const route of ["/api/orders/mine","/api/owner/orders","/api/admin/orders","/api/notifications"]){
+            const r=await fetch(base+route);
+            if(r.status!==401)throw Error(route+" must reject anonymous users, got "+r.status);
+          }
+          const preflight=await fetch(base+"/api/orders",{method:"OPTIONS",headers:{Origin:"https://siboniisozulu-alt.github.io","Access-Control-Request-Method":"POST","Access-Control-Request-Headers":"authorization,content-type"}});
+          if(!preflight.ok||preflight.headers.get("access-control-allow-origin")!=="https://siboniisozulu-alt.github.io")throw Error("Browser CORS preflight failed");
+          console.log("Live anonymous staging API checks passed; authenticated E2E still required");
+          NODE

@@ -15,6 +15,46 @@ jobs:
       - name: Verify ordering and dashboard integration
         run: |
           node --check worker/src/index.js
-          node --check worker/src/privileged.js
+          node --check worker/src/neon-auth.js
+          node --check worker/src/neon-api.js
+          node --input-type=module --check < neon-app.js
+          node --check android-staging/scripts/prepare-web.mjs
+          node -e 'const c=require("./android-staging/capacitor.config.json");if(!c.appId||c.webDir!=="www")process.exit(1)'
           node tests/browser-script-syntax.cjs
-          node tests/ordering-static.test.cjs
+          # Legacy Firebase page checks are not applicable to the Neon-only staging Worker.
+          # Keep them available for a separate migration audit; do not mask Neon failures.
+          node --test tests/neon-security-static.test.cjs
+          node scripts/audit-firebase-export.mjs tests/fixtures/firebase-export-sample.json
+
+  android-staging-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android staging dependencies
+        working-directory: android-staging
+        run: npm install --no-audit --no-fund
+      - name: Generate Android project and sync Neon customer assets
+        working-directory: android-staging
+        run: npm run build:android
+      - name: Require Android 8.0 or later
+        working-directory: android-staging/android
+        run: |
+          sed -i 's/minSdkVersion = [0-9][0-9]*/minSdkVersion = 26/' variables.gradle
+          grep -q 'minSdkVersion = 26' variables.gradle
+      - name: Compile staging debug APK
+        working-directory: android-staging/android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - name: Retain staging APK for device installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: kota-connect-neon-staging-debug-apk
+          path: android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+

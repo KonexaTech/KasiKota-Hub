@@ -1,0 +1,20 @@
+const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs");
+const api=fs.readFileSync("worker/src/neon-api.js","utf8");
+const auth=fs.readFileSync("worker/src/neon-auth.js","utf8");
+const worker=fs.readFileSync("worker/src/index.js","utf8");
+const page=fs.readFileSync("neon-staging.html","utf8");
+test("Worker routes only to Neon and fails closed without Neon-only mode",()=>{assert.match(worker,/NEON_ONLY_MODE !== "true"/);assert.match(worker,/await neonApi\(request, env, withDb\)/);assert.doesNotMatch(worker,/privilegedRoute|verifiedFirebaseUser|FIREBASE_PROJECT_ID|ADMIN_UID/)});
+test("Neon Auth validates signed tokens and fixed issuer/audience",()=>{assert.match(auth,/jwtVerify\(/);assert.match(auth,/algorithms: \["EdDSA"\]/);assert.match(auth,/issuer, audience: issuer/);assert.match(auth,/createRemoteJWKSet/)});
+test("Admin role comes from database, not browser request",()=>{assert.match(auth,/FROM kc_admins WHERE subject=\$1/);assert.match(api,/isNeonAdmin\(/)});
+test("Order prices are calculated using Neon menu rows",()=>{assert.match(api,/SELECT id,name,price_cents FROM kc_menu_items/);assert.match(api,/subtotal\+=prices\.get\(item\.itemId\)\.price_cents\*item\.quantity/)});
+test("Order status updates require shop ownership and lock row",()=>{assert.match(api,/s\.owner_subject=\$2 FOR UPDATE OF o/);assert.match(api,/Invalid status transition/)});
+test("Order and history reads verify customer, owner or admin",()=>{assert.match(api,/order\.customer_subject!==subject&&order\.owner_subject!==subject/);assert.match(api,/\/history/);assert.match(api,/actor_role,note,created_at/)});
+test("Notifications are scoped to authenticated recipient",()=>{assert.match(api,/WHERE recipient_subject=\$1/);assert.match(api,/read_at=COALESCE\(read_at,now\(\)\)/)});
+test("Shop approval is database-admin-gated",()=>{assert.match(api,/path==="\/api\/admin\/shop-applications"/);assert.match(api,/application\.status!=="pending"/)});
+test("Staging page has no Firebase SDK dependency",()=>{assert.doesNotMatch(page,/https?:[^"\s]+firebase[^"\s]+\.js|from\s+["\x27][^"\x27]*firebase/i);assert.match(page,/createAuthClient/)});
+test("Order line items require ownership and use snapshot prices",()=>{assert.match(api,/const details=\/\^/);assert.match(api,/order\.customer_subject!==subject&&order\.owner_subject!==subject/);assert.match(api,/SELECT item_name,unit_price_cents,quantity FROM kc_order_items/)});
+test("Checkout requires a stable request ID and enforces a unique retry key",()=>{assert.match(api,/uuid\.test\(data\.requestId/);assert.match(api,/ON CONFLICT \(customer_subject,client_request_id\)/);assert.match(api,/replayed:true/);assert.match(page,/crypto\.randomUUID\(\)/)});
+test("All three Neon role pages use shared Firebase-free client",()=>{for(const role of ["customer","owner","admin"]){const html=fs.readFileSync("neon-"+role+".html","utf8");assert.match(html,/src="\.\/neon-app\.js"/);assert.doesNotMatch(html,/firebase(?:-app|-auth|-firestore)\.js/i)}const client=fs.readFileSync("neon-app.js","utf8");assert.match(client,/crypto\.randomUUID\(\)/);assert.match(client,/\/api\/notifications/);assert.match(client,/\/api\/orders/);assert.doesNotMatch(client,/firebaseapp\.com|firebase\/auth|firebase\/firestore/i)});
+test("Replayed checkout key cannot silently change items or delivery",()=>{assert.match(api,/lines\.length===data\.items\.length/);assert.match(api,/lines\.some\(y=>y\.id===x\.itemId&&y\.quantity===x\.quantity\)/);assert.match(api,/existing\.delivery_address/);assert.match(api,/replay\.delivery_address/)});
+
+test("Development Worker pins Neon database target and reports mismatch safely",()=>{const config=fs.readFileSync("worker/wrangler.jsonc","utf8");assert.match(worker,/EXPECTED_NEON_HOST/);assert.match(worker,/Database target does not match development branch/);assert.match(config,/ep-lively-leaf-za5rtfhs\.c-2\.eu-west-2\.aws\.neon\.tech/);assert.match(api,/wrong_database_target/);assert.doesNotMatch(worker,/console\.log\(.*DATABASE_URL/)});

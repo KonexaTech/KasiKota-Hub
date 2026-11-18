@@ -1,3 +1,8 @@
+ feature/neon-only-cutover
+/* Retired Firebase messaging worker. No Firebase code is loaded. */
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil(self.registration.unregister()));
+
 /* FCM web-push service worker for installed Android Chrome PWA.
    Native Capacitor APKs require a separate native FCM registration path. */
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
@@ -14,3 +19,4 @@ self.addEventListener("notificationclick",event=>{
  event.notification.close();
  event.waitUntil(clients.openWindow(new URL("../kota-connect-owners-dashboard-fixed.html",self.registration.scope).href));
 });
+ main

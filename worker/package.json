@@ -9,7 +9,8 @@
     "test:integration": "node test/release-gates.integration.mjs"
   },
   "dependencies": {
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "jose": "^6.0.0"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
