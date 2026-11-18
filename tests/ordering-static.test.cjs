@@ -25,7 +25,7 @@ const checks=[
 ["push idempotency",privileged.includes('ON CONFLICT DO NOTHING')],
 ["owner background push registration",owner.includes('getToken(getMessaging(app)')],
 ["FCM background worker",pushSw.includes('firebase.messaging()')],
-["legacy Firebase privileged routes not exposed through Neon Worker",!worker.includes('privilegedRoute(request,env') && !worker.includes('from "./privileged.js"')
+["legacy Firebase privileged routes not exposed through Neon Worker",!worker.includes('privilegedRoute(request,env') && !worker.includes('from "./privileged.js"')]
 ];
 let failed=0;for(const [name,ok] of checks){console.log((ok?"PASS":"FAIL")+" "+name);if(!ok)failed++}
 assert.equal(failed,0,failed+" static checks failed");
