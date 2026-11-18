@@ -75,6 +75,33 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     if (!["GET","POST","PATCH"].includes(request.method)) return json({ error: "Method not allowed" }, 405, headers);
     const path = new URL(request.url).pathname;
+    const workerOrigin = new URL(request.url).origin;
+    if (request.method === "GET" && path === "/staging") {
+      const page = await fetch("https://raw.githubusercontent.com/siboniisozulu-alt/KasiKota-Hub/fix/six-release-gates-neon-staging/neon-staging.html", { cf: { cacheTtl: 60, cacheEverything: true } });
+      if (!page.ok) return json({error:"Staging dashboard source unavailable"},502,headers);
+      return new Response(await page.text(), {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+    }
+    if (request.method === "GET" && path === "/password-reset-request") {
+      return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kota Connect staging password</title><style>body{font:16px system-ui;background:#f6f7f2;color:#203629;margin:0}main{max-width:440px;margin:8vh auto;padding:24px;background:white;border:1px solid #dce6db;border-radius:18px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b9c9bc;border-radius:9px}button{margin-top:16px;padding:12px 18px;border:0;border-radius:9px;background:#176b42;color:white;font-weight:700}</style><main><h1>Kota Connect</h1><h2>Set or reset staging password</h2><p>Enter one of the staging account email addresses. A secure password-reset link will be sent to that inbox.</p><form id="f"><input id="email" type="email" required placeholder="Email address"><button>Send reset link</button></form><p id="m" role="status"></p></main><script>document.getElementById('f').addEventListener('submit',async e=>{e.preventDefault();const m=document.getElementById('m');m.textContent='Sending…';try{const r=await fetch('/password-reset/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value.trim()})});const d=await r.json();m.textContent=r.ok?'If the account exists, a password-reset email has been sent. Check your inbox and spam folder.':(d.error||'Unable to send reset email.')}catch(e){m.textContent='Request failed. Please retry.'}})</script></html>`, {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+    }
+    if (request.method === "GET" && path === "/password-reset") {
+      return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kota Connect staging password reset</title><style>body{font:16px system-ui;background:#f6f7f2;color:#203629;margin:0}main{max-width:440px;margin:8vh auto;padding:24px;background:white;border:1px solid #dce6db;border-radius:18px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b9c9bc;border-radius:9px;margin:8px 0}button{margin-top:16px;padding:12px 18px;border:0;border-radius:9px;background:#176b42;color:white;font-weight:700}</style><main><h1>Kota Connect</h1><h2>Choose a staging password</h2><p>Use at least 12 characters. This changes only the selected staging account.</p><form id="f"><input id="p" type="password" minlength="12" required placeholder="New password"><input id="c" type="password" minlength="12" required placeholder="Confirm password"><button>Save password</button></form><p id="m" role="status"></p><a href="/password-reset-request">Request another reset link</a></main><script type="module">import{createAuthClient}from'https://esm.sh/@neon/auth';const auth=createAuthClient('${env.NEON_AUTH_BASE_URL||""}');const token=new URLSearchParams(location.search).get('token');const f=document.getElementById('f'),m=document.getElementById('m');if(!token){f.hidden=true;m.textContent='Reset token missing. Request a new link.'}f.addEventListener('submit',async e=>{e.preventDefault();if(document.getElementById('p').value!==document.getElementById('c').value){m.textContent='Passwords do not match.';return}const r=await auth.resetPassword({newPassword:document.getElementById('p').value,token});if(r.error){m.textContent='Password reset failed: '+r.error.message;return}f.hidden=true;m.textContent='Password saved. You can now sign in on the staging app.'})</script></html>`, {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+    }
+    if (request.method === "POST" && path === "/password-reset/request") {
+      let data;
+      try { data = await request.json(); } catch { return json({error:"Invalid request"},400,headers); }
+      const email = typeof data?.email === "string" ? data.email.trim().toLowerCase() : "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !env.NEON_AUTH_BASE_URL)
+        return json({error:"Invalid email or authentication configuration"},400,headers);
+      const redirectTo = workerOrigin + "/password-reset";
+      const upstream = await fetch(env.NEON_AUTH_BASE_URL.replace(/\/$/,"") + "/request-password-reset", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify({email,redirectTo})
+      });
+      // Do not disclose whether a particular email is registered.
+      if (!upstream.ok) return json({error:"Password reset service unavailable"},502,headers);
+      return json({message:"If the account exists, a reset email has been sent."},200,headers);
+    }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
     try {
 
@@ -277,7 +304,7 @@ export default {
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, async db => {
           const order = await db.query(
-            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_name,o.fulfillment_type,o.area,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
+            "SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.customer_name,o.customer_phone,o.fulfillment_type,o.area,o.delivery_address,o.subtotal_cents,o.delivery_cents,o.total_cents,o.owner_note,o.delay_minutes,o.created_at,o.updated_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE o.id=$1 AND (o.customer_subject=$2 OR s.owner_subject=$2 OR EXISTS (SELECT 1 FROM kc_admins WHERE subject=$2))",
             [orderDetail[1],uid]
           );
           if (!order.rowCount) return null;
@@ -292,9 +319,18 @@ export default {
         if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, s.name AS shop_name,
-            o.status, o.created_at, o.area, o.fulfillment_type,
+            o.status, o.created_at, o.updated_at, o.area, o.fulfillment_type,
+            o.customer_name, o.customer_phone, o.delivery_address,
             o.subtotal_cents, o.delivery_cents, o.total_cents,
-            o.test_order
+            o.owner_note, o.delay_minutes, o.test_order,
+            COALESCE((SELECT json_agg(json_build_object(
+              'menu_item_id',oi.menu_item_id,'name',oi.item_name,
+              'unit_price_cents',oi.unit_price_cents,'quantity',oi.quantity
+            ) ORDER BY oi.id) FROM kc_order_items oi WHERE oi.order_id=o.id),'[]'::json) AS items,
+            COALESCE((SELECT json_agg(json_build_object(
+              'previous_status',ev.previous_status,'new_status',ev.new_status,
+              'actor_role',ev.actor_role,'note',ev.note,'created_at',ev.created_at
+            ) ORDER BY ev.created_at ASC) FROM kc_order_status_events ev WHERE ev.order_id=o.id),'[]'::json) AS history
           FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
           ORDER BY o.created_at DESC LIMIT 200
         `));
@@ -309,7 +345,10 @@ export default {
         const next = data?.status;
         const allowed = ["accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
         const note = typeof data?.note === "string" ? data.note.trim() : "";
-        if (!allowed.includes(next) || note.length > 500) return json({ error: "Invalid status" }, 400, headers);
+        const delayMinutes = next === "delayed" ? Number(data?.delay_minutes) : 0;
+        if (!allowed.includes(next) || note.length > 500 ||
+            (next === "delayed" && (!Number.isInteger(delayMinutes) || delayMinutes < 5 || delayMinutes > 240)))
+          return json({ error: "Invalid status or delay. Delays must be 5–240 whole minutes." }, 400, headers);
         const result = await withDb(env, async db => {
           await db.query("BEGIN");
           try {
@@ -321,10 +360,10 @@ export default {
             const current = existing.rows[0];
             const transitions = { pending:["accepted","rejected","delayed"],delayed:["accepted","rejected"],accepted:["preparing","rejected","delayed"],preparing:["ready_for_collection","out_for_delivery","delayed"],ready_for_collection:["completed"],out_for_delivery:["completed"] };
             if (!transitions[current.status]?.includes(next)) { await db.query("ROLLBACK"); return { status:409,error:"Invalid status transition" }; }
-            await db.query("UPDATE kc_orders SET status=$1,owner_note=$2,updated_at=now() WHERE id=$3",[next,note,current.id]);
+            await db.query("UPDATE kc_orders SET status=$1,owner_note=$2,delay_minutes=$3,updated_at=now() WHERE id=$4",[next,note,delayMinutes,current.id]);
             await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role,note) VALUES ($1,$2,$3,$4,'owner',$5)",[current.id,current.status,next,uid,note]);
             await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES ($1,$2,'order_status',$3,$4)",
-              [current.customer_subject,current.id,"Order "+current.order_number+" updated","Status: "+next]);
+              [current.customer_subject,current.id,"Order "+current.order_number+" updated","Status: "+next+(delayMinutes ? " · Estimated delay: "+delayMinutes+" minutes" : "")+(note ? " · "+note : "")]);
             await db.query("COMMIT");
             return { order: { id:current.id,status:next } };
           } catch (error) { await db.query("ROLLBACK").catch(() => {}); throw error; }
@@ -336,8 +375,12 @@ export default {
         if (!uid) return json({ error: "Unauthorized" }, 401, headers);
         const result = await withDb(env, db => db.query(`
           SELECT o.id, o.order_number, o.shop_id, o.status, o.created_at,
-            o.customer_name, o.area, o.fulfillment_type, o.subtotal_cents,
-            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes
+            o.customer_name, o.customer_phone, o.delivery_address,
+            o.area, o.fulfillment_type, o.subtotal_cents,
+            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes,
+            COALESCE((SELECT json_agg(json_build_object(
+              'name',oi.item_name,'unit_price_cents',oi.unit_price_cents,'quantity',oi.quantity
+            ) ORDER BY oi.id) FROM kc_order_items oi WHERE oi.order_id=o.id),'[]'::json) AS items
           FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
           WHERE s.owner_subject=$1 ORDER BY o.created_at DESC LIMIT 100
         `, [uid]));
