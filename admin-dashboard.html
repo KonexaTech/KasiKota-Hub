@@ -208,7 +208,6 @@ footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; 
     <button type="button" class="active" data-tab="applications">Applications</button>
     <button type="button" data-tab="shops">Shops</button>
     <button type="button" data-tab="orders">Orders</button>
-    <button type="button" data-tab="commission">Commission</button>
   </nav>
 
   <section class="card tab-panel" id="panel-applications">
@@ -236,43 +235,9 @@ footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; 
     <div id="orders-list" class="empty">Loading orders…</div>
   </section>
 
-  <section class="card tab-panel hidden" id="panel-commission">
-    <h2>Commission overview</h2>
-    <p class="muted">
-      Planning estimate: R0.50 per completed order that is not marked as a
-      test order. These figures are calculated from current order records;
-      they are not a permanent ledger, proof of payment, or confirmation
-      that commission is owed.
-    </p>
-
-    <div class="statgrid">
-      <div class="stat">
-        <span class="muted">Estimated eligible orders</span>
-        <strong id="commission-orders">0</strong>
-      </div>
-      <div class="stat">
-        <span class="muted">Estimated commission</span>
-        <strong id="commission-total">R0.00</strong>
-      </div>
-      <div class="stat">
-        <span class="muted">Remaining to R20</span>
-        <strong id="commission-remaining">R20.00</strong>
-      </div>
-    </div>
-
-    <div class="notice">
-      <strong>Neon commission ledger (development)</strong>
-      <p class="muted">Connect a deployed Cloudflare Worker to display verified Neon ledger balances. Firebase estimates remain separate until migration is completed.</p>
-      <label for="neon-worker-url">Cloudflare Worker HTTPS origin</label>
-      <input id="neon-worker-url" type="url" placeholder="https://your-worker.workers.dev" style="width:100%;max-width:480px">
-      <button type="button" id="neon-commission-refresh" class="secondary">Load Neon commission</button>
-      <p id="neon-commission-status" role="status">Not connected.</p>
-      <div id="neon-commission-results"></div>
-    </div>
-    <h3>Estimated commission by shop</h3>
-    <div id="commission-list" class="empty">
-      Commission estimates will appear after refreshing.
-    </div>
+  <section class="card tab-panel" id="panel-launch-notice">
+    <h2>Launch phase: no commission</h2>
+    <p class="muted">Kota Connect will not charge shops commission during the launch phase. No per-order deductions, commission thresholds, or commission collection are active.</p>
   </section>
 
 </section>
@@ -560,71 +525,6 @@ function renderOrders() {
   }
 }
 
-/* COMMISSION ESTIMATE ONLY
-   This does not write commission records to Firestore or collect payments.
-*/
-
-function renderCommission() {
-  const eligible = ordersData.filter(item => {
-    const d = item.data;
-
-    return String(d.orderStatus || "").toLowerCase() === "completed"
-      && d.testOrder !== true;
-  });
-
-  const shopTotals = new Map();
-
-  for (const item of eligible) {
-    const d = item.data;
-    const key = d.shopId || d.shopName || "unknown-shop";
-
-    if (!shopTotals.has(key)) {
-      shopTotals.set(key, {
-        shopName: d.shopName || "Unnamed shop",
-        count: 0,
-        commission: 0
-      });
-    }
-
-    const shop = shopTotals.get(key);
-    shop.count += 1;
-    shop.commission += 0.50;
-  }
-
-  const total = eligible.length * 0.50;
-
-  $("commission-orders").textContent = String(eligible.length);
-  $("commission-total").textContent = money(total);
-  $("commission-remaining").textContent =
-    money(Math.max(0, 20 - total));
-
-  const root = $("commission-list");
-  root.replaceChildren();
-
-  if (!shopTotals.size) {
-    root.className = "empty";
-    root.textContent = "No eligible completed orders found.";
-    return;
-  }
-
-  root.className = "";
-
-  for (const shop of shopTotals.values()) {
-    const card = el("article", "item");
-
-    card.append(el("h3", "", shop.shopName));
-    addLine(card, "Completed non-test orders", shop.count);
-    addLine(card, "Estimated commission", money(shop.commission));
-    addLine(
-      card,
-      "Remaining to R20",
-      money(Math.max(0, 20 - shop.commission))
-    );
-
-    root.append(card);
-  }
-}
-
 /* LOAD FIRESTORE DATA */
 
 async function loadData() {
@@ -637,8 +537,7 @@ async function loadData() {
   [
     "applications-list",
     "shops-list",
-    "orders-list",
-    "commission-list"
+    "orders-list"
   ].forEach(id => {
     $(id).className = "empty";
     $(id).textContent = "Loading…";
@@ -674,7 +573,6 @@ async function loadData() {
     renderApplications();
     renderShops();
     renderOrders();
-    renderCommission();
 
     message("page-message", "Data refreshed successfully.", "success");
   } catch (error) {
