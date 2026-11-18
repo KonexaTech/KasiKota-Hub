@@ -7,8 +7,8 @@ const json = (body, status = 200, headers = {}) =>
 
 function cors(request, env) {
   const origin = request.headers.get("origin");
-  const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
-  return origin === allowed ? { "access-control-allow-origin": allowed, "vary": "Origin" } : {};
+  const allowed = [env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io", "https://kota-connect-neon-staging.pages.dev"];
+  return allowed.includes(origin) ? { "access-control-allow-origin": origin, "vary": "Origin" } : {};
 }
 
 async function withDb(env, callback) {
@@ -30,8 +30,8 @@ export default {
   async fetch(request, env) {
     const headers = cors(request, env);
     const origin = request.headers.get("origin");
-    const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
-    if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
+    const allowed = [env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io", "https://kota-connect-neon-staging.pages.dev"];
+    if (origin && !allowed.includes(origin)) return json({ error: "Origin not allowed" }, 403);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     const path = new URL(request.url).pathname;
     if (path === "/health" && request.method === "GET") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
