@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feature/neon-only-api-auth
+      - feature/neon-only-cutover
     paths:
       - 'neon-staging.html'
       - 'capacitor.config.ts'
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feature/neon-only-api-auth
+          ref: feature/neon-only-cutover
       - uses: actions/setup-node@v4
         with:
           node-version: 22
