@@ -1,4 +1,3 @@
-import { privilegedRoute } from "./privileged.js";
 import { Client } from "pg";
 
 /**
@@ -72,15 +71,6 @@ export default {
   async fetch(request, env) {
     const headers = cors(request, env);
     const origin = request.headers.get("origin");
- feature/kota-ordering-release-gates
-    const allowed = env.ALLOWED_ORIGIN || "https://siboniisozulu-alt.github.io";
-    if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
-    const path = new URL(request.url).pathname;
-    if(request.method==="POST"&&path.startsWith("/api/")){try{const response=await privilegedRoute(request,env,verifiedFirebaseUser,withDb);if(response){const result=new Response(response.body,response);Object.entries(headers).forEach(([key,value])=>result.headers.set(key,value));return result}}catch(error){console.error("Privileged request failed",error?.message);return json({error:"Privileged service unavailable"},503,headers)}}
-    if (request.method !== "GET") return json({ error: "Method not allowed" }, 405, headers);
-    if (path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
-
     if (origin && !allowedOrigin(origin, env)) return json({ error: "Origin not allowed" }, 403);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     if (!["GET","POST","PATCH"].includes(request.method)) return json({ error: "Method not allowed" }, 405, headers);
@@ -113,7 +103,7 @@ export default {
       return json({message:"If the account exists, a reset email has been sent."},200,headers);
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
- main
+
     try {
 
       if (request.method === "GET" && path === "/api/health/db") {
