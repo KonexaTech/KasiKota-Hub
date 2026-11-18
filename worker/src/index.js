@@ -37,8 +37,16 @@ export default {
       return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     if (!["GET", "POST", "PATCH"].includes(request.method)) return json({ error: "Method not allowed" }, 405, headers);
     const path = new URL(request.url).pathname;
- feature/neon-only-cutover
-    if (path === "/health" && request.method === "GET") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+    if (path === "/health" && request.method === "GET") {
+      if (env.NEON_ONLY_MODE !== "true") return json({ status: "unavailable", database: "not_checked" }, 503, headers);
+      try {
+        const result = await withDb(env, client => client.query("SELECT 1 AS ready"));
+        return json({ status: result.rows[0]?.ready === 1 ? "ok" : "unavailable", database: result.rows[0]?.ready === 1 ? "connected" : "failed" }, result.rows[0]?.ready === 1 ? 200 : 503, headers);
+      } catch (error) {
+        console.error("Development database health check failed", { type: error?.name || "UnknownError" });
+        return json({ status: "unavailable", database: "failed" }, 503, headers);
+      }
+    }
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
     if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
 
@@ -71,7 +79,6 @@ export default {
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
 
-main
     try {
       const response = await neonApi(request, env, withDb);
       if (!response) return json({ error: "Not found" }, 404, headers);
