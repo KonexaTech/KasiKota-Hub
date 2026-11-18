@@ -2,7 +2,7 @@ import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
 const auth=createAuthClient(AUTH_URL,{fetchOptions:{credentials:"include"}});
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
-const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
+const API=location.origin;
 let requestId=null,menu=[],cart=[];
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
