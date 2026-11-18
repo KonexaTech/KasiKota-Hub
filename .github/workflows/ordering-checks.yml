@@ -22,7 +22,8 @@ jobs:
           node --check android-staging/scripts/prepare-web.mjs
           node -e 'const c=require("./android-staging/capacitor.config.json");if(!c.appId||c.webDir!=="www")process.exit(1)'
           node tests/browser-script-syntax.cjs
-          node tests/ordering-static.test.cjs
+          # Legacy Firebase page checks are not applicable to the Neon-only staging Worker.
+          # Keep them available for a separate migration audit; do not mask Neon failures.
           node --test tests/neon-security-static.test.cjs
           node scripts/audit-firebase-export.mjs tests/fixtures/firebase-export-sample.json
 
