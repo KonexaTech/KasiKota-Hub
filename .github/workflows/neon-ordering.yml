@@ -1,0 +1,21 @@
+name: Neon-only ordering checks
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/neon-only-cutover
+jobs:
+  neon-ordering:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Neon Worker and ordering scripts
+        run: |
+          node --check worker/src/index.js
+          node --check worker/src/neon-api.js
+          node --check worker/src/neon-auth.js
+          node --check tests/neon-ordering-only.test.cjs
+          node tests/neon-ordering-only.test.cjs
