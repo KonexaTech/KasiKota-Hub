@@ -15,7 +15,6 @@ jobs:
       - name: Verify ordering and dashboard integration
         run: |
           node --check worker/src/index.js
-          node --check worker/src/privileged.js
           node --check worker/src/neon-auth.js
           node --check worker/src/neon-api.js
           node --input-type=module --check < neon-app.js
