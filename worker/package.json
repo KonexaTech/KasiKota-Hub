@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js && node --check test/release-gates.integration.mjs",
+    "test:integration": "node test/release-gates.integration.mjs"
   },
   "dependencies": {
     "pg": "^8.16.3"
