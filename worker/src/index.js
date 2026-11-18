@@ -1,12 +1,7 @@
 import { neonApi } from "./neon-api.js";
-import { privilegedRoute } from "./privileged.js";
 import { Client } from "pg";
 
-/**
- * Kota Connect's public, read-only catalog API.
- * Add authenticated owner/customer/admin endpoints only after identity verification is configured.
- * DATABASE_URL is a Worker secret; never place it in GitHub Pages or this repository.
- */
+// Neon-only staging API. DATABASE_URL must be a server-side Worker secret.
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 
@@ -23,44 +18,6 @@ async function withDb(env, callback) {
   finally { await client.end().catch(() => {}); }
 }
 
-
-const decodeBase64Url = input => {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), c => c.charCodeAt(0));
-};
-async function verifiedFirebaseUser(request, env) {
-  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
-  if (!token || !env.FIREBASE_PROJECT_ID) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  let header, claims;
-  try {
-    header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
-    claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
-  } catch { return null; }
-  const now = Math.floor(Date.now() / 1000);
-  if (header.alg !== "RS256" || typeof header.kid !== "string" ||
-      claims.aud !== env.FIREBASE_PROJECT_ID ||
-      claims.iss !== "https://securetoken.google.com/" + env.FIREBASE_PROJECT_ID ||
-      typeof claims.sub !== "string" || !claims.sub ||
-      !Number.isFinite(claims.exp) || claims.exp <= now ||
-      !Number.isFinite(claims.iat) || claims.iat > now ||
-      !Number.isFinite(claims.auth_time) || claims.auth_time > now) return null;
-  try {
-    const response = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
-    if (!response.ok) return null;
-    const { keys } = await response.json();
-    const jwk = keys?.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.use || key.use === "sig"));
-    if (!jwk) return null;
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, decodeBase64Url(parts[2]), new TextEncoder().encode(parts[0] + "." + parts[1])) ? claims.sub : null;
-  } catch { return null; }
-}
-
-async function verifiedAdmin(request, env) {
-  return Boolean(env.ADMIN_UID && await verifiedFirebaseUser(request, env) === env.ADMIN_UID);
-}
-
 export default {
   async fetch(request, env) {
     const headers = cors(request, env);
@@ -69,82 +26,19 @@ export default {
     if (origin && origin !== allowed) return json({ error: "Origin not allowed" }, 403);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, "access-control-allow-methods": "GET, POST, PATCH, OPTIONS", "access-control-allow-headers": "content-type, authorization" } });
     const path = new URL(request.url).pathname;
-    if(env.NEON_ONLY_MODE==="true"&&path.startsWith("/api/")){try{const response=await neonApi(request,env,withDb);if(response){const result=new Response(response.body,response);Object.entries(headers).forEach(([key,value])=>result.headers.set(key,value));return result}}catch(error){console.error("Neon-only API failed",error?.message);return json({error:"API unavailable"},503,headers)}}
-    if(request.method==="POST"&&path.startsWith("/api/")){try{const response=await privilegedRoute(request,env,verifiedFirebaseUser,withDb);if(response){const result=new Response(response.body,response);Object.entries(headers).forEach(([key,value])=>result.headers.set(key,value));return result}}catch(error){console.error("Privileged request failed",error?.message);return json({error:"Privileged service unavailable"},503,headers)}}
-    if (request.method !== "GET") return json({ error: "Method not allowed" }, 405, headers);
-    if (path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+    if (path === "/health" && request.method === "GET") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+    if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
+    // Fail closed if a deployment accidentally omits Neon-only mode.
+    if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
     try {
-
-      if (path === "/api/health/db") {
-        // Deliberately omit database error details and connection metadata.
-        await withDb(env, db => db.query("SELECT 1 AS ok"));
-        return json({ status: "ok", database: "reachable" }, 200, headers);
-      }
-      if (path === "/api/admin/commission") {
-        if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
-        const result = await withDb(env, db => db.query(`
-          SELECT s.id AS shop_id, s.name AS shop_name,
-            COUNT(e.id)::integer AS eligible_orders,
-            COALESCE(SUM(e.amount_cents),0)::integer AS earned_cents,
-            COALESCE((SELECT SUM(p.amount_cents) FROM kc_commission_payments p WHERE p.shop_id=s.id),0)::integer AS paid_cents
-          FROM kc_shops s
-          LEFT JOIN kc_commission_entries e ON e.shop_id=s.id
-          GROUP BY s.id,s.name
-          ORDER BY s.name LIMIT 1000
-        `));
-        const shops = result.rows.map(row => ({
-          ...row,
-          outstanding_cents: Math.max(0, row.earned_cents - row.paid_cents),
-          remaining_to_threshold_cents: Math.max(0, 2000 - (row.earned_cents - row.paid_cents))
-        }));
-        return json({
-          source: "neon_ledger",
-          commission_per_order_cents: 50,
-          payout_threshold_cents: 2000,
-          eligible_orders: shops.reduce((sum, shop) => sum + shop.eligible_orders, 0),
-          earned_cents: shops.reduce((sum, shop) => sum + shop.earned_cents, 0),
-          paid_cents: shops.reduce((sum, shop) => sum + shop.paid_cents, 0),
-          outstanding_cents: shops.reduce((sum, shop) => sum + shop.outstanding_cents, 0),
-          shops
-        }, 200, headers);
-      }
-      if (path === "/api/admin/orders") {
-        if (!await verifiedAdmin(request, env)) return json({ error: "Unauthorized" }, 401, headers);
-        const result = await withDb(env, db => db.query(`
-          SELECT o.id, o.order_number, o.shop_id, s.name AS shop_name,
-            o.status, o.created_at, o.area, o.fulfillment_type,
-            o.subtotal_cents, o.delivery_cents, o.total_cents,
-            o.test_order
-          FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
-          ORDER BY o.created_at DESC LIMIT 200
-        `));
-        return json({ orders: result.rows }, 200, headers);
-      }
-      if (path === "/api/owner/orders") {
-        const uid = await verifiedFirebaseUser(request, env);
-        if (!uid) return json({ error: "Unauthorized" }, 401, headers);
-        const result = await withDb(env, db => db.query(`
-          SELECT o.id, o.order_number, o.shop_id, o.status, o.created_at,
-            o.customer_name, o.area, o.fulfillment_type, o.subtotal_cents,
-            o.delivery_cents, o.total_cents, o.owner_note, o.delay_minutes
-          FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id
-          WHERE s.owner_subject=$1 ORDER BY o.created_at DESC LIMIT 100
-        `, [uid]));
-        return json({ orders: result.rows }, 200, headers);
-      }
-      if (path === "/api/shops") {
-        const rows = await withDb(env, db => db.query("SELECT id, name, area, address FROM kc_shops WHERE approved = true ORDER BY name LIMIT 100"));
-        return json({ shops: rows.rows }, 200, headers);
-      }
-      const match = /^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
-      if (match) {
-        const rows = await withDb(env, db => db.query("SELECT m.id, m.name, m.price_cents FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE m.shop_id=$1 AND m.available=true AND s.approved=true ORDER BY m.name LIMIT 100", [match[1]]));
-        return json({ items: rows.rows }, 200, headers);
-      }
-      return json({ error: "Not found" }, 404, headers);
+      const response = await neonApi(request, env, withDb);
+      if (!response) return json({ error: "Not found" }, 404, headers);
+      const result = new Response(response.body, response);
+      Object.entries(headers).forEach(([key, value]) => result.headers.set(key, value));
+      return result;
     } catch (error) {
-      console.error("Kota Connect API request failed", { path, error: error?.name || "UnknownError" });
-      return json({ error: "Database unavailable" }, 503, headers);
+      console.error("Neon API request failed", { path, type: error?.name || "UnknownError" });
+      return json({ error: "API unavailable" }, 503, headers);
     }
   }
 };
