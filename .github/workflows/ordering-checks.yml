@@ -15,6 +15,7 @@ jobs:
       - name: Verify ordering and dashboard integration
         run: |
           node --check worker/src/index.js
+ feature/neon-only-cutover
           node --check worker/src/neon-auth.js
           node --check worker/src/neon-api.js
           node --input-type=module --check < neon-app.js
@@ -57,3 +58,8 @@ jobs:
           name: kota-connect-neon-staging-debug-apk
           path: android-staging/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+          node --check worker/src/privileged.js
+          node tests/browser-script-syntax.cjs
+          node tests/ordering-static.test.cjs
+ main

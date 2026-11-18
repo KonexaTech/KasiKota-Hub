@@ -1,1 +1,853 @@
+ feature/neon-only-cutover
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kota Connect — Neon</title><meta http-equiv="refresh" content="0;url=https://kota-connect-neon-staging.pages.dev/neon-admin.html"><meta name="robots" content="noindex"></head><body><main><h1>Kota Connect</h1><p>The Firebase version of this page has been retired on this development branch. Neon staging is not yet approved for production use.</p><p><a href="https://kota-connect-neon-staging.pages.dev/neon-admin.html">Continue to Neon staging</a></p></main></body></html>
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#176b45">
+<meta name="description" content="Kota Connect administrator dashboard">
+<title>Kota Connect | Admin Dashboard</title>
+
+<style>
+:root {
+  --g:#176b45;
+  --ink:#17221c;
+  --muted:#66736b;
+  --line:#e1e8e2;
+  --bg:#f5f8f5;
+  --red:#a52a2a;
+  --white:#fff;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+header { background:var(--g); color:white; padding:20px 16px; }
+header .inner, main { max-width:1100px; margin:auto; }
+h1 { margin:0; font-size:1.45rem; }
+header p { margin:5px 0 0; opacity:.9; }
+.wrap { max-width:1100px; margin:20px auto; padding:0 14px; }
+.card {
+  background:var(--white);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:18px;
+  margin-bottom:16px;
+  box-shadow:0 3px 12px #13261a08;
+}
+h2 { font-size:1.15rem; margin:0 0 10px; }
+h3 { font-size:1rem; margin:0 0 8px; }
+.muted { color:var(--muted); font-size:.93rem; }
+.notice {
+  background:#fff7df;
+  border:1px solid #f0d995;
+  padding:11px 13px;
+  border-radius:10px;
+  margin:12px 0;
+  color:#5e480d;
+}
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.row > * { flex:1; }
+.field { display:block; margin:10px 0; }
+.field span { display:block; font-size:.9rem; font-weight:650; margin-bottom:5px; }
+input {
+  width:100%;
+  padding:11px 12px;
+  border:1px solid #cbd7cd;
+  border-radius:9px;
+  font:inherit;
+  background:white;
+}
+button,.button {
+  border:0;
+  border-radius:9px;
+  background:var(--g);
+  color:white;
+  font:inherit;
+  font-weight:650;
+  padding:10px 14px;
+  cursor:pointer;
+  text-decoration:none;
+  display:inline-block;
+}
+button.secondary { background:#e8efe9; color:var(--ink); }
+button.danger { background:var(--red); }
+button:disabled { opacity:.55; cursor:not-allowed; }
+.error { color:var(--red); white-space:pre-wrap; }
+.success { color:var(--g); }
+.hidden { display:none!important; }
+.tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.tabs button.active { outline:3px solid #a7c9b2; }
+.statgrid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:16px;
+}
+.stat {
+  padding:13px;
+  background:#f7faf7;
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.stat strong { font-size:1.5rem; display:block; overflow-wrap:anywhere; }
+.item {
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:13px;
+  margin:10px 0;
+  background:white;
+}
+.itemhead {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.pill {
+  display:inline-block;
+  border-radius:99px;
+  padding:3px 9px;
+  font-size:.78rem;
+  font-weight:700;
+  background:#edf2ed;
+  color:#33443a;
+}
+.pill.pending { background:#fff1c7; color:#725000; }
+.pill.approved,.pill.completed { background:#e0f4e7; color:#176b45; }
+.pill.rejected { background:#ffe5e5; color:#8b2020; }
+.details { font-size:.92rem; overflow-wrap:anywhere; margin:8px 0; }
+.actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.empty {
+  padding:18px;
+  color:var(--muted);
+  text-align:center;
+  border:1px dashed var(--line);
+  border-radius:10px;
+}
+small { color:var(--muted); }
+footer { text-align:center; color:var(--muted); padding:20px; font-size:.85rem; }
+@media(max-width:600px) {
+  .statgrid { grid-template-columns:1fr; }
+  .row > * { flex-basis:100%; }
+  .card { padding:14px; }
+}
+</style>
+<link rel="stylesheet" href="premium.css">
+</head>
+
+<body>
+<header>
+  <div class="inner">
+    <h1>Kota Connect — Admin Dashboard</h1>
+    <p>Manage shop applications, shop records and customer orders</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section class="card" id="login-card">
+  <h2>Administrator sign in</h2>
+  <p class="muted">
+    Sign in using the administrator Firebase Authentication account.
+  </p>
+  <form id="login-form">
+    <label class="field">
+      <span>Email</span>
+      <input id="email" type="email" autocomplete="username" required>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input id="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button id="login-button" type="submit">Sign in</button>
+  </form>
+  <p id="login-message" role="status" aria-live="polite"></p>
+  <details><summary>Create an administrator account</summary><p class="notice">Registration creates a Firebase account only. Administrator access requires separate approval and secure server-side provisioning. New accounts cannot approve themselves or access admin records.</p><form id="admin-register-form"><label class="field"><span>Email</span><input id="admin-register-email" type="email" autocomplete="email" required></label><label class="field"><span>Password (at least 12 characters)</span><input id="admin-register-password" type="password" minlength="12" autocomplete="new-password" required></label><button type="submit" id="admin-register-button">Create account (pending approval)</button></form><p id="admin-register-message" role="status" aria-live="polite"></p></details>
+</section>
+
+<section id="dashboard" class="hidden">
+  <div class="card"><h2>Administrator account approval</h2><p class="muted">Only the primary administrator can approve verified accounts. Enter the trusted Worker URL and the new account UID. Do not share passwords.</p><label class="field"><span>Secure Worker URL</span><input id="admin-approval-worker" type="url" placeholder="https://your-worker.workers.dev"></label><label class="field"><span>Account UID</span><input id="admin-approval-uid" autocomplete="off" placeholder="Firebase account UID"></label><div class="row"><button id="approve-admin" type="button">Approve administrator</button><button id="revoke-admin" type="button" class="secondary">Revoke access</button></div><p id="admin-approval-message" role="status"></p></div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <h2>Administrator access</h2>
+        <p class="muted" id="signed-in-as"></p>
+      </div>
+      <div style="text-align:right;flex:0 0 auto">
+        <button id="refresh" class="secondary" type="button">Refresh data</button>
+        <button id="logout" class="secondary" type="button">Sign out</button>
+      </div>
+    </div>
+
+    <div class="notice">
+      Check shop details before approval. Orders and commission figures are
+      for monitoring only. This dashboard does not collect payments or
+      automatically collect commission.
+    </div>
+    <p id="page-message" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="statgrid">
+    <div class="stat">
+      <span class="muted">Applications</span>
+      <strong id="count-apps">—</strong>
+    </div>
+    <div class="stat">
+      <span class="muted">Shop records</span>
+      <strong id="count-shops">—</strong>
+    </div>
+    <div class="stat">
+      <span class="muted">Orders</span>
+      <strong id="count-orders">—</strong>
+    </div>
+  </div>
+
+  <nav class="tabs" aria-label="Dashboard sections">
+    <button type="button" class="active" data-tab="applications">Applications</button>
+    <button type="button" data-tab="shops">Shops</button>
+    <button type="button" data-tab="orders">Orders</button>
+  </nav>
+
+  <section class="card tab-panel" id="panel-applications">
+    <h2>Shop applications</h2>
+    <p class="muted">
+      Approve genuine applications only. Rejected applications remain saved.
+    </p>
+    <div id="applications-list" class="empty">Loading applications…</div>
+  </section>
+
+  <section class="card tab-panel hidden" id="panel-shops">
+    <h2>Shop records</h2>
+    <p class="muted">
+      Includes approved and unapproved shop records.
+    </p>
+    <div id="shops-list" class="empty">Loading shops…</div>
+  </section>
+
+  <section class="card tab-panel hidden" id="panel-orders">
+    <h2>Customer orders</h2>
+    <p class="muted">
+      Quoted totals are not necessarily final totals. Check payment and
+      fulfilment status before treating an order as financially settled.
+    </p>
+    <div id="orders-list" class="empty">Loading orders…</div>
+  </section>
+
+  <section class="card tab-panel" id="panel-launch-notice">
+    <h2>Launch phase: no commission</h2>
+    <p class="muted">Kota Connect will not charge shops commission during the launch phase. No per-order deductions, commission thresholds, or commission collection are active.</p>
+  </section>
+
+</section>
+</main>
+
+<footer>Kota Connect · Newcastle, KwaZulu-Natal</footer>
+
+<script type="module">
+import {
+  initializeApp,
+  getApps
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  onSnapshot,
+  doc,
+  addDoc,
+  updateDoc,
+  query,
+  where,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const ADMIN_UID = "4menEfIBN2XqMMi8dZPSrv73HlQ2";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCxaY076gfNUfE3OzxkDJZ5xAdmLEuJzgs",
+  authDomain: "kasikota-hub.firebaseapp.com",
+  databaseURL: "https://kasikota-hub-default-rtdb.firebaseio.com",
+  projectId: "kasikota-hub",
+  storageBucket: "kasikota-hub.firebasestorage.app",
+  messagingSenderId: "470531130099",
+  appId: "1:470531130099:web:1bf117b7adf7a3a3d7ed86",
+  measurementId: "G-WKH542B38C"
+};
+
+const app = getApps().length
+  ? getApps()[0]
+  : initializeApp(firebaseConfig);
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = id => document.getElementById(id);
+
+let appsData = [];
+let shopsData = [];
+let ordersData = [];
+let busy = false;
+let stopAdminOrders = null;
+let approvedAdmin = false;
+const hasAdminAccess = () => Boolean(auth.currentUser && (auth.currentUser.uid === ADMIN_UID || approvedAdmin));
+
+const text = value =>
+  value == null || value === "" ? "—" : String(value);
+
+const money = value =>
+  typeof value === "number" && Number.isFinite(value)
+    ? "R" + value.toFixed(2)
+    : text(value);
+
+function dateText(value) {
+  try {
+    if (value?.toDate) return value.toDate().toLocaleString();
+    if (value instanceof Date) return value.toLocaleString();
+    return value ? String(value) : "—";
+  } catch {
+    return "—";
+  }
+}
+
+function message(id, msg, type = "") {
+  const target = $(id);
+  target.textContent = msg;
+  target.className = type;
+}
+
+function errorText(error) {
+  const code = error?.code || "";
+
+  if (code.includes("permission-denied")) {
+    return "Firestore denied access. Check the published Firestore rules and confirm that the administrator UID is allowed to read and update the required collections.";
+  }
+
+  if (
+    code.includes("invalid-credential") ||
+    code.includes("wrong-password") ||
+    code.includes("user-not-found") ||
+    code.includes("invalid-login-credentials")
+  ) {
+    return "Email or password is incorrect.";
+  }
+
+  if (
+    code.includes("api-key-not-valid") ||
+    code.includes("invalid-api-key")
+  ) {
+    return "Firebase rejected the API key. Check the Firebase project configuration.";
+  }
+
+  if (code.includes("network-request-failed")) {
+    return "Network error. Check your internet connection and try again.";
+  }
+
+  return error?.message || "Something went wrong.";
+}
+
+function el(tag, cls, value) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (value !== undefined) node.textContent = value;
+  return node;
+}
+
+function addLine(parent, label, value) {
+  const p = el("p", "details");
+  const b = el("strong", "", label + ": ");
+  p.append(b, document.createTextNode(text(value)));
+  parent.append(p);
+}
+
+function safePill(value) {
+  const label = text(value);
+  const cssClass = label.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  return el("span", "pill " + cssClass, label);
+}
+
+/* SHOP APPLICATIONS */
+
+function renderApplications() {
+  const root = $("applications-list");
+  root.replaceChildren();
+
+  if (!appsData.length) {
+    root.className = "empty";
+    root.textContent = "No shop applications found.";
+    return;
+  }
+
+  root.className = "";
+
+  const sorted = [...appsData].sort(
+    (a, b) =>
+      (b.data.createdAt?.seconds || 0) -
+      (a.data.createdAt?.seconds || 0)
+  );
+
+  for (const item of sorted) {
+    const d = item.data;
+    const card = el("article", "item");
+    const head = el("div", "itemhead");
+    const left = el("div");
+
+    left.append(el("h3", "", text(d.shopName)));
+    left.append(el("small", "", "Application ID: " + item.id));
+    head.append(left, safePill(d.status || "pending"));
+    card.append(head);
+
+    addLine(card, "Owner", d.ownerName);
+    addLine(card, "Email", d.email);
+    addLine(card, "Phone", d.phone);
+    addLine(card, "Address", d.address);
+    addLine(card, "Description", d.description);
+    addLine(card, "Submitted", dateText(d.createdAt));
+
+    const actions = el("div", "actions");
+
+    if ((d.status || "pending").toLowerCase() === "pending") {
+      const approve = el("button", "", "Approve shop");
+      approve.type = "button";
+      approve.addEventListener("click", () => approveApplication(item));
+
+      const reject = el("button", "danger", "Reject application");
+      reject.type = "button";
+      reject.addEventListener("click", () => rejectApplication(item));
+
+      actions.append(approve, reject);
+    } else {
+      actions.append(el("small", "", "No action for this status."));
+    }
+
+    card.append(actions);
+    root.append(card);
+  }
+}
+
+/* SHOP RECORDS */
+
+function renderShops() {
+  const root = $("shops-list");
+  root.replaceChildren();
+
+  if (!shopsData.length) {
+    root.className = "empty";
+    root.textContent = "No shop records found.";
+    return;
+  }
+
+  root.className = "";
+
+  for (const item of shopsData) {
+    const d = item.data;
+    const card = el("article", "item");
+    const head = el("div", "itemhead");
+    const left = el("div");
+
+    left.append(el("h3", "", text(d.shopName || d.name)));
+    left.append(el("small", "", "Shop ID: " + item.id));
+    head.append(left, safePill(d.status || "no status"));
+    card.append(head);
+
+    addLine(card, "Owner UID", d.ownerUid);
+    addLine(card, "Owner", d.ownerName);
+    addLine(card, "Phone", d.phone);
+    addLine(card, "Address", d.address);
+    addLine(card, "Public approved flag", d.approved);
+
+    const menuText = typeof d.menu === "string"
+      ? d.menu
+      : JSON.stringify(d.menu || []);
+
+    addLine(card, "Menu", menuText);
+    root.append(card);
+  }
+}
+
+/* CUSTOMER ORDERS */
+
+function renderOrders() {
+  const root = $("orders-list");
+  root.replaceChildren();
+
+  if (!ordersData.length) {
+    root.className = "empty";
+    root.textContent = "No orders found.";
+    return;
+  }
+
+  root.className = "";
+
+  const sorted = [...ordersData].sort(
+    (a, b) =>
+      (b.data.createdAt?.seconds || 0) -
+      (a.data.createdAt?.seconds || 0)
+  );
+
+  for (const item of sorted) {
+    const d = item.data;
+    const card = el("article", "item");
+    const head = el("div", "itemhead");
+    const left = el("div");
+
+    left.append(el("h3", "", "Order " + text(d.orderNumber || item.id)));
+    left.append(el("small", "", "Document ID: " + item.id));
+    head.append(left, safePill(d.orderStatus || "unknown"));
+    card.append(head);
+
+    addLine(card, "Shop", d.shopName);
+    addLine(card, "Shop ID", d.shopId);
+    addLine(card, "Customer", d.customerName);
+    addLine(card, "Customer phone", d.customerPhone);
+    addLine(card, "Pickup / delivery", d.fulfillmentType);
+    addLine(card, "Area", d.area);
+
+    const itemsText = Array.isArray(d.items)
+      ? d.items.map(item =>
+          (item.name || item.itemName || "Item") +
+          " × " + text(item.quantity)
+        ).join(", ")
+      : JSON.stringify(d.items || []);
+
+    addLine(card, "Items", itemsText);
+    addLine(card, "Quoted total", money(d.totalQuote));
+    addLine(card, "Confirmed total", money(d.confirmedTotal));
+    addLine(card, "Payment status", d.paymentStatus);
+    addLine(card, "Test order", d.testOrder);
+    addLine(card, "Created", dateText(d.createdAt));
+
+    root.append(card);
+  }
+}
+
+/* LOAD FIRESTORE DATA */
+
+async function loadData() {
+  if (!hasAdminAccess()) {
+    return;
+  }
+
+  message("page-message", "Loading data…");
+
+  [
+    "applications-list",
+    "shops-list",
+    "orders-list"
+  ].forEach(id => {
+    $(id).className = "empty";
+    $(id).textContent = "Loading…";
+  });
+
+  try {
+    const [applicationsSnapshot, shopsSnapshot, ordersSnapshot] =
+      await Promise.all([
+        getDocs(collection(db, "shopApplications")),
+        getDocs(collection(db, "shops")),
+        getDocs(collection(db, "orders"))
+      ]);
+
+    appsData = applicationsSnapshot.docs.map(snapshot => ({
+      id: snapshot.id,
+      data: snapshot.data()
+    }));
+
+    shopsData = shopsSnapshot.docs.map(snapshot => ({
+      id: snapshot.id,
+      data: snapshot.data()
+    }));
+
+    ordersData = ordersSnapshot.docs.map(snapshot => ({
+      id: snapshot.id,
+      data: snapshot.data()
+    }));
+
+    $("count-apps").textContent = String(appsData.length);
+    $("count-shops").textContent = String(shopsData.length);
+    $("count-orders").textContent = String(ordersData.length);
+
+    renderApplications();
+    renderShops();
+    renderOrders();
+
+    if(stopAdminOrders)stopAdminOrders();
+    stopAdminOrders=onSnapshot(collection(db,"orders"),snapshot=>{if(!hasAdminAccess())return;ordersData=snapshot.docs.map(d=>({id:d.id,data:d.data()}));$("count-orders").textContent=String(ordersData.length);renderOrders();renderCommission();message("page-message","Live order monitoring connected.","success")},error=>message("page-message","Live orders unavailable: "+error.message,"error"));
+    message("page-message", "Data refreshed successfully. Live order monitoring enabled.", "success");
+  } catch (error) {
+    message("page-message", errorText(error), "error");
+  }
+}
+
+/* APPROVE SHOP APPLICATION */
+
+async function approveApplication(item) {
+  if (busy) return;
+
+  const d = item.data;
+
+  if (!confirm(
+    "Approve “" + text(d.shopName) +
+    "” and make it eligible to appear publicly? Check the details first."
+  )) {
+    return;
+  }
+
+  busy = true;
+
+  try {
+    /* Use the saved owner UID if the application contains one.
+       Fall back to the application document ID for older records. */
+    const ownerUid = d.ownerUid || d.uid || d.userId || item.id;
+
+    const existing = await getDocs(
+      query(
+        collection(db, "shops"),
+        where("ownerUid", "==", ownerUid)
+      )
+    );
+
+    const shopFields = {
+      shopName: d.shopName || "",
+      ownerUid: ownerUid,
+      ownerName: d.ownerName || "",
+      email: d.email || "",
+      phone: d.phone || "",
+      address: d.address || "",
+      description: d.description || "",
+      status: "approved",
+      approved: true,
+      updatedAt: serverTimestamp()
+    };
+
+    if (existing.empty) {
+      shopFields.menu = "";
+      shopFields.createdAt = serverTimestamp();
+
+      await addDoc(collection(db, "shops"), shopFields);
+    } else {
+      const linked = existing.docs[0];
+      const existingData = linked.data();
+
+      /* Preserve an existing menu instead of overwriting it. */
+      if (existingData.menu === undefined) {
+        shopFields.menu = "";
+      }
+
+      await updateDoc(doc(db, "shops", linked.id), shopFields);
+    }
+
+    await updateDoc(
+      doc(db, "shopApplications", item.id),
+      {
+        status: "approved",
+        ownerUid: ownerUid
+      }
+    );
+
+    message("page-message", "Shop approved. Refreshing dashboard…", "success");
+    await loadData();
+
+  } catch (error) {
+    message(
+      "page-message",
+      "Approval failed: " + errorText(error) +
+      " If a shop record was created before the error, check the Shops tab before trying again.",
+      "error"
+    );
+  } finally {
+    busy = false;
+  }
+}
+
+/* REJECT SHOP APPLICATION */
+
+async function rejectApplication(item) {
+  if (busy) return;
+
+  if (!confirm(
+    "Reject the application for “" +
+    text(item.data.shopName) +
+    "”? The application will remain saved."
+  )) {
+    return;
+  }
+
+  busy = true;
+
+  try {
+    await updateDoc(
+      doc(db, "shopApplications", item.id),
+      { status: "rejected" }
+    );
+
+    message("page-message", "Application rejected.", "success");
+    await loadData();
+
+  } catch (error) {
+    message(
+      "page-message",
+      "Could not reject application: " + errorText(error),
+      "error"
+    );
+  } finally {
+    busy = false;
+  }
+}
+
+/* ADMIN LOGIN */
+
+$("login-form").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  message("login-message", "Signing in…");
+  $("login-button").disabled = true;
+
+  try {
+    await signInWithEmailAndPassword(
+      auth,
+      $("email").value.trim(),
+      $("password").value
+    );
+  } catch (error) {
+    message("login-message", errorText(error), "error");
+  } finally {
+    $("login-button").disabled = false;
+  }
+});
+
+/* DASHBOARD CONTROLS */
+
+$("logout").addEventListener("click", async () => {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    message("page-message", errorText(error), "error");
+  }
+});
+
+$("refresh").addEventListener("click", loadData);
+
+document.querySelectorAll("[data-tab]").forEach(button => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-tab]").forEach(tab => {
+      tab.classList.toggle("active", tab === button);
+    });
+
+    document.querySelectorAll(".tab-panel").forEach(panel => {
+      panel.classList.toggle(
+        "hidden",
+        panel.id !== "panel-" + button.dataset.tab
+      );
+    });
+  });
+});
+
+
+// The Neon commission panel is opt-in until the Worker is deployed and verified.
+$("neon-commission-refresh").addEventListener("click", async () => {
+  const status = $("neon-commission-status");
+  const results = $("neon-commission-results");
+  results.replaceChildren();
+  const origin = $("neon-worker-url").value.trim().replace(/\/$/, "");
+  if (!/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)) {
+    status.textContent = "Enter the deployed Cloudflare Worker HTTPS origin.";
+    return;
+  }
+  const user = auth.currentUser;
+  if (!user || !hasAdminAccess()) {
+    status.textContent = "Administrator sign-in required.";
+    return;
+  }
+  status.textContent = "Loading authenticated Neon commission records…";
+  try {
+    const token = await user.getIdToken();
+    const response = await fetch(origin + "/api/admin/commission", {
+      headers: { Authorization: "Bearer " + token },
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error("Worker returned HTTP " + response.status);
+    const data = await response.json();
+    if (data.source !== "neon_ledger" || !Array.isArray(data.shops)) throw new Error("Unexpected API response");
+    const format = cents => money(Number(cents) / 100);
+    const summary = el("p", "", "Neon eligible orders: " + data.eligible_orders +
+      " · Earned: " + format(data.earned_cents) +
+      " · Paid: " + format(data.paid_cents) +
+      " · Outstanding: " + format(data.outstanding_cents));
+    results.append(summary);
+    for (const shop of data.shops) {
+      const card = el("article", "item");
+      card.append(el("h3", "", shop.shop_name));
+      addLine(card, "Eligible orders", shop.eligible_orders);
+      addLine(card, "Earned", format(shop.earned_cents));
+      addLine(card, "Paid", format(shop.paid_cents));
+      addLine(card, "Outstanding", format(shop.outstanding_cents));
+      addLine(card, "Remaining to R20", format(shop.remaining_to_threshold_cents));
+      results.append(card);
+    }
+    status.textContent = "Neon ledger loaded. This does not include unmigrated Firebase orders.";
+  } catch (error) {
+    status.textContent = "Neon ledger unavailable: " + (error?.message || "Request failed");
+  }
+});
+
+document.getElementById("admin-register-form").addEventListener("submit",async event=>{event.preventDefault();const email=$("admin-register-email").value.trim(),password=$("admin-register-password").value,button=$("admin-register-button");button.disabled=true;try{const credential=await createUserWithEmailAndPassword(auth,email,password);await sendEmailVerification(credential.user);message("admin-register-message","Account created. Verify your email, then give the primary administrator this UID: "+credential.user.uid+". Registration does not grant admin access.","success");await signOut(auth)}catch(error){message("admin-register-message",errorText(error),"error")}finally{button.disabled=false}});
+
+for(const [buttonId,endpoint] of [["approve-admin","approve"],["revoke-admin","revoke"]]){$(buttonId).addEventListener("click",async()=>{const url=$("admin-approval-worker").value.trim().replace(/\/$/,""),uid=$("admin-approval-uid").value.trim(),button=$(buttonId);if(!url.startsWith("https://")||!uid){message("admin-approval-message","Enter a secure Worker URL and the account UID.","error");return}button.disabled=true;try{const token=await auth.currentUser.getIdToken(true);const response=await fetch(url+"/api/admin/"+endpoint,{method:"POST",headers:{"authorization":"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({uid})});const result=await response.json();if(!response.ok)throw Error(result.error||"Request failed");message("admin-approval-message",endpoint==="approve"?"Account approved. User must sign in again to refresh their permissions.":"Administrator access revoked. Existing sessions may retain old claims until refresh.","success")}catch(error){message("admin-approval-message",error.message,"error")}finally{button.disabled=false}})}
+
+/* VERIFY AUTHENTICATED ADMIN */
+
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    approvedAdmin=false;
+    if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
+    $("login-card").classList.remove("hidden");
+    $("dashboard").classList.add("hidden");
+    message("login-message", "");
+    return;
+  }
+
+  try{const claims=await user.getIdTokenResult(true);approvedAdmin=claims.claims.kotaAdmin===true}catch{approvedAdmin=false}
+  if (!hasAdminAccess()) {
+    if(stopAdminOrders){stopAdminOrders();stopAdminOrders=null}
+    $("login-card").classList.remove("hidden");
+    $("dashboard").classList.add("hidden");
+
+    message(
+      "login-message",
+      "This account is not the configured administrator account. Sign out and use the correct admin account.",
+      "error"
+    );
+
+    signOut(auth).catch(() => {});
+    return;
+  }
+
+  $("login-card").classList.add("hidden");
+  $("dashboard").classList.remove("hidden");
+  for(const id of ["approve-admin","revoke-admin"])$(id).disabled=user.uid!==ADMIN_UID;
+
+  $("signed-in-as").textContent =
+    "Signed in as " + (user.email || "administrator") +
+    " · UID verified in this page";
+
+  loadData();
+});
+</script>
+</body>
+</html>
+ main
