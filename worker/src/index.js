@@ -13,7 +13,15 @@ function cors(request, env) {
 
 async function withDb(env, callback) {
   if (!env.DATABASE_URL && !env.HYPERDRIVE) throw new Error("Database binding not configured");
-  const client = new Client({ connectionString: env.HYPERDRIVE?.connectionString || env.DATABASE_URL, connectionTimeoutMillis: 5000 });
+  // This staging Worker must never connect to a different Neon branch.
+  const connectionString = env.HYPERDRIVE?.connectionString || env.DATABASE_URL;
+  if (!env.EXPECTED_NEON_HOST) throw new Error("Expected development database host not configured");
+  let hostname;
+  try { hostname = new URL(connectionString).hostname.toLowerCase(); }
+  catch { throw new Error("Invalid database connection URL"); }
+  if (hostname !== env.EXPECTED_NEON_HOST.toLowerCase())
+    throw new Error("Database target does not match development branch");
+  const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
   try { await client.connect(); return await callback(client); }
   finally { await client.end().catch(() => {}); }
 }
