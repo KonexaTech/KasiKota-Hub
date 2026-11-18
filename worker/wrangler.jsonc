@@ -2,24 +2,16 @@
   "name": "kota-connect-api-dev",
   "main": "src/index.js",
   "compatibility_date": "2026-11-17",
- feature/neon-only-cutover
-  "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
-  "vars": {
-    "NEON_ONLY_MODE": "true",
-    "EXPECTED_NEON_HOST": "ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech",
-    "NEON_AUTH_BASE_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth",
-    "ALLOWED_ORIGIN": "https://siboniisozulu-alt.github.io"
-
   "compatibility_flags": [
     "nodejs_compat"
   ],
   "workers_dev": true,
   "vars": {
-    "ALLOWED_ORIGIN": "https://siboniisozulu-alt.github.io",
-    "ALLOWED_ORIGINS": "https://siboniisozulu-alt.github.io,https://kota-connect-api-dev.siboniisozulu.workers.dev,https://localhost,http://localhost",
+    "NEON_ONLY_MODE": "true",
+    "EXPECTED_NEON_HOST": "ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech",
     "NEON_AUTH_BASE_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth",
-    "NEON_AUTH_JWKS_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
-main
+    "NEON_AUTH_JWKS_URL": "https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/.well-known/jwks.json",
+    "ALLOWED_ORIGIN": "https://siboniisozulu-alt.github.io",
+    "ALLOWED_ORIGINS": "https://siboniisozulu-alt.github.io,https://kota-connect-neon-staging.pages.dev,https://kota-connect-api-dev.siboniisozulu.workers.dev,https://localhost,http://localhost"
   }
 }
