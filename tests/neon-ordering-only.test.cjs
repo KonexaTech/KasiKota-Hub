@@ -19,3 +19,15 @@ const worker = fs.readFileSync("worker/src/index.js","utf8");
 assert(worker.includes("NEON_ONLY_MODE"),"Neon-only guard required");
 assert(!worker.includes("privilegedRoute"),"Legacy Firebase privileged routes must remain disconnected");
 console.log("PASS Neon ordering integration static checks");
+
+for (const [path, destination] of Object.entries({
+  "index.html":"neon-customer.html",
+  "admin-dashboard.html":"neon-admin.html",
+  "kota-connect-owners-dashboard-fixed.html":"neon-owner.html",
+  "order-tracking.html":"neon-customer.html"
+})) {
+  const source = fs.readFileSync(path,"utf8");
+  assert(source.includes("https://kota-connect-neon-staging.pages.dev/"+destination), path+" must use Neon staging");
+  assert(!/firebase|firestore|firebaseapp/i.test(source.replace(/Firebase version of this page has been retired/g,"")),path+" still contains Firebase code");
+  console.log("PASS retired Firebase entry:",path);
+}
