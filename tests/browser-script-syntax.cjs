@@ -1,8 +1,18 @@
 const fs=require("node:fs"),os=require("node:os"),path=require("node:path"),{execFileSync}=require("node:child_process");
- feature/neon-only-cutover
 const files=["index.html","admin-dashboard.html","kota-connect-owners-dashboard-fixed.html","order-tracking.html","neon-staging.html","neon-customer.html","neon-owner.html","neon-admin.html"];
-
-const files=["index.html","admin-dashboard.html","kota-connect-owners-dashboard-fixed.html","order-tracking.html"];
- main
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"kota-browser-syntax-"));
-try{for(const file of files){const html=fs.readFileSync(file,"utf8");const matches=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];let count=0;for(const [,attrs,body] of matches){if(!body.trim()||/\bsrc\s*=/.test(attrs))continue;const target=path.join(dir,path.basename(file)+"-"+count+(attrs.includes("module")?".mjs":".cjs"));fs.writeFileSync(target,body);execFileSync(process.execPath,["--check",target],{stdio:"pipe"});count++}console.log("PASS "+file+": "+count+" inline script(s) parsed")}}finally{fs.rmSync(dir,{recursive:true,force:true})}
+try {
+  for(const file of files) {
+    const html=fs.readFileSync(file,"utf8");
+    const matches=[...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];
+    let count=0;
+    for(const [,attrs,body] of matches) {
+      if(!body.trim()||/\\bsrc\\s*=/.test(attrs))continue;
+      const target=path.join(dir,path.basename(file)+"-"+count+(attrs.includes("module")?".mjs":".cjs"));
+      fs.writeFileSync(target,body);
+      execFileSync(process.execPath,["--check",target],{stdio:"pipe"});
+      count++;
+    }
+    console.log("PASS "+file+": "+count+" inline script(s) parsed");
+  }
+} finally {fs.rmSync(dir,{recursive:true,force:true})}
