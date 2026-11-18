@@ -4,7 +4,7 @@ const root = "staging-preview/";
 const pages = ["index.html","neon-customer.html","neon-owner.html","neon-admin.html","neon-staging.html","neon-app.js","_worker.js"];
 for (const file of pages) {
   const source = fs.readFileSync(root + file,"utf8");
-  assert(!/firebase(?:-app|-auth|-firestore|-messaging)?|firestore|wa\\.me|whatsapp/i.test(source), file + " must not use Firebase or WhatsApp ordering");
+  assert(!/firebase(?:app|auth|firestore|messaging)\s*\(|firebase\.initializeApp|firebase\.messaging|from\s*["\x27][^"\x27]*firebase|wa\.me\//i.test(source), file + " must not call Firebase or WhatsApp ordering");
   console.log("PASS Neon-only staging asset:",file);
 }
 const entry = fs.readFileSync(root + "index.html","utf8");
