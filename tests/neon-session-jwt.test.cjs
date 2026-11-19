@@ -5,39 +5,50 @@ const vm=require("node:vm");
 const app=fs.readFileSync("staging-preview/neon-app.js","utf8");
 const first=app.indexOf("function isSignedJwt(value){");
 const last=app.indexOf("\nasync function api(path,",first);
-assert.ok(first>=0&&last>first);
+assert.ok(first>=0&&last>first,"JWT helper must be present");
 const helper=app.slice(first,last);
-function create({sessionResult,headerToken="",throws=false}){
- const auth={getSession:async(options)=>{if(throws)throw Error("session transport failure");options?.fetchOptions?.onSuccess?.({response:{headers:{get:k=>k==="set-auth-jwt"?headerToken:null}}});return sessionResult}};
- const context={auth};
- vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
- return context.apiJwt;
+function create(response){
+  const calls=[];
+  const context={
+    fetch:async(url,options={})=>{
+      calls.push({url,options});
+      if(response instanceof Error)throw response;
+      return response;
+    },
+  };
+  vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
+  return {request:context.apiJwt,calls};
 }
-test("uses signed JWT exposed as data.session.token",async()=>{
- const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"head.payload.signature"}}}});
- assert.equal(await request(),"head.payload.signature");
+const http=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
+test("direct token endpoint returns a signed JWT and sends the first-party cookie",async()=>{
+  const {request,calls}=create(http(200,{token:"head.payload.signature"}));
+  assert.equal(await request(),"head.payload.signature");
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,"https://site.pages.dev/auth/token");
+  assert.equal(calls[0].options.credentials,"include");
+  assert.equal(calls[0].options.cache,"no-store");
 });
-test("falls back to set-auth-jwt response header",async()=>{
- const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"opaque"}}},headerToken:"head.payload.signature"});
- assert.equal(await request(),"head.payload.signature");
+test("nested token responses are recognized",async()=>{
+  assert.equal(await create(http(200,{data:{token:"head.payload.signature"}})).request(),"head.payload.signature");
 });
-test("does not send an opaque session token to API",async()=>{
- const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"opaque"}}}});
- await assert.rejects(request(),/did not include a signed JWT/);
+test("HTTP 401 is surfaced without leaking session secrets",async()=>{
+  await assert.rejects(create(http(401,{error:{message:"Unauthorized"}})).request(),/HTTP 401.*Unauthorized/);
 });
-test("requires an active session",async()=>{
- const request=create({sessionResult:{data:null}});
- await assert.rejects(request(),/No active Neon Auth session/);
+test("an opaque session ID is never accepted as a JWT",async()=>{
+  await assert.rejects(create(http(200,{token:"opaque-session-id"})).request(),/HTTP 200 without a signed JWT/);
 });
-test("surfaces auth and transport errors",async()=>{
- await assert.rejects(create({sessionResult:{error:{message:"expired"}}})(),/expired/);
- await assert.rejects(create({throws:true})(),/session transport failure/);
+test("a successful response without a JWT is diagnosed",async()=>{
+  await assert.rejects(create(http(200,{data:{session:{token:"opaque-session-id"}}})).request(),/HTTP 200 without a signed JWT/);
 });
-test("whole app parses and keeps admin/owner authorization on server",()=>{
- const script=app.replace(/^import\s+\{[^}]+\}\s+from\s+"[^"]+";\s*/gm,"");
- assert.doesNotThrow(()=>new vm.Script(script));
- assert.match(app,/session\.data\.session\.token/);
- assert.match(app,/me\.admin===false/);
- assert.match(app,/me\.admin===true/);
- assert.doesNotMatch(app,/submitPendingShopApplication\(\)/);
+test("network failures have a distinct message",async()=>{
+  await assert.rejects(create(new Error("network")).request(),/could not be reached/);
+});
+test("whole app parses and keeps role authorization on the server",()=>{
+  const script=app.replace(/^import\\s+\\{[^}]+\\}\\s+from\\s+"[^"]+";\\s*/gm,"");
+  assert.doesNotThrow(()=>new vm.Script(script));
+  assert.match(app,/fetch\\(tokenUrl,/);
+  assert.match(app,/credentials:"include"/);
+  assert.match(app,/me\\.admin===false/);
+  assert.match(app,/me\\.admin===true/);
+  assert.doesNotMatch(app,/submitPendingShopApplication\\(\\)/);
 });
