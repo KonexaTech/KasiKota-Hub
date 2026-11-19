@@ -1,21 +1,28 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
-/** Neon Auth JWT verification. Never trust a user ID or role from request JSON. */
+/** Verify Neon Auth access tokens using the branch-provided JWKS and issuer. */
 const jwksCache = new Map();
 export async function verifiedNeonSubject(request, env) {
-  const token = /^Bearer (\S+)$/.exec(request.headers.get("authorization") || "")?.[1];
-  const base = (env.NEON_AUTH_URL || env.NEON_AUTH_BASE_URL || "").replace(/\/$/, "");
-  if (!token || !base || !base.startsWith("https://")) return null;
+  const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get("authorization") || "")?.[1];
+  const base = (env.NEON_AUTH_BASE_URL || env.NEON_AUTH_URL || "").replace(/\/$/, "");
+  const configuredJwks = env.NEON_AUTH_JWKS_URL || (base ? base + "/.well-known/jwks.json" : "");
+  if (!token || !base.startsWith("https://") || !configuredJwks.startsWith("https://")) return null;
   try {
-    const jwksUrl = new URL(base + "/.well-known/jwks.json");
+    const jwksUrl = new URL(configuredJwks);
     let jwks = jwksCache.get(jwksUrl.href);
-    if (!jwks) { jwks = createRemoteJWKSet(jwksUrl); jwksCache.set(jwksUrl.href, jwks); }
+    if (!jwks) {
+      jwks = createRemoteJWKSet(jwksUrl);
+      jwksCache.set(jwksUrl.href, jwks);
+    }
+    // Neon Auth documents the issuer as the origin of NEON_AUTH_BASE_URL.
+    // Do not impose an audience claim Neon does not promise to issue.
     const issuer = new URL(base).origin;
-    const options = { algorithms: ["EdDSA"], issuer, audience: issuer };
-    const { payload } = await jwtVerify(token, jwks, options);
+    const { payload } = await jwtVerify(token, jwks, { algorithms: ["EdDSA"], issuer });
     if (typeof payload.sub !== "string" || !payload.sub || !payload.exp || !payload.iat) return null;
     return payload.sub;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 export async function isNeonAdmin(env, withDb, subject) {
   if (!subject) return false;
