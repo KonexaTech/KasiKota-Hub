@@ -21,6 +21,7 @@ jobs:
           node --check worker/src/guest-auth.js
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
+          node --test tests/postmerge-integrity.test.mjs
           node --test tests/customer-journey.test.mjs
           node --test tests/three-experiences-static.test.cjs
           node --test worker/test/guest-auth.test.mjs
