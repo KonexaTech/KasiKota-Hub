@@ -41,7 +41,6 @@ const payload=()=>({
 const created=expect(await call("/api/orders","customer","POST",payload()),201,"create order");
 const orderId=created.order?.id;
 if(!orderId)throw Error("Created order response has no ID");
-const sameRequest={requestId:created.order.request_id||null};
 const original=payload();
 const retry=expect(await call("/api/orders","customer","POST",original),201,"second independent order");
 const secondOrderId=retry.order?.id;
