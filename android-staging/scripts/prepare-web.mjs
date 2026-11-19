@@ -4,6 +4,7 @@ await mkdir(www,{recursive:true});
 await copyFile(resolve(root,"neon-customer.html"),resolve(www,"index.html"));
 await copyFile(resolve(root,"neon-app.js"),resolve(www,"neon-app.js"));
 await copyFile(resolve(root,"premium.css"),resolve(www,"premium.css"));
+for(const file of ["kota-customer.css","kota-customer.mjs","shop-discovery.mjs"])await copyFile(resolve(root,"staging-preview",file),resolve(www,file));
 const html=await readFile(resolve(www,"index.html"),"utf8");
-if(!html.includes("neon-app.js")||!html.includes('data-role="customer"'))throw Error("Neon staging entrypoint not found");
+if(!html.includes("kota-customer.mjs")||!html.includes('data-role="customer"'))throw Error("Neon staging entrypoint not found");
 console.log("Prepared isolated Neon customer staging assets");
