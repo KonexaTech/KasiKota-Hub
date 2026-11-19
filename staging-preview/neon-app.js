@@ -63,9 +63,24 @@ async function showIdentity(){
     throw e;
   }
 }
-$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="owner"&&!dashboardAccess)throw Error("Administrator accounts cannot sign in as shop owners. Sign out and use another owner account.");if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
-bind("sendVerification",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
-bind("verifyEmail",async()=>{const email=$("email").value.trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);out("Email verified. You can sign in with your password. Use Reset password only if you need to change it.")});
+$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="owner"&&dashboardAccess){await submitPendingShopApplication();await loadOwnerOrders(false);}if(role==="owner"&&!dashboardAccess)throw Error("Administrator accounts cannot sign in as shop owners. Sign out and use another owner account.");if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
+$("shopRegistrationForm").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{
+ const email=required("regEmail","Email").toLowerCase();
+ const password=required("regPassword","Password");
+ if(password!==required("regPasswordConfirm","Password confirmation"))throw Error("Passwords do not match.");
+ if(password.length<12)throw Error("Use a password with at least 12 characters.");
+ const application={ownerName:required("regOwnerName","Owner name"),shopName:required("regShopName","Shop name"),phone:required("regPhone","Phone"),area:required("regArea","Area"),address:required("regAddress","Address"),description: $("regDescription").value.trim()};
+ const created=await auth.signUp.email({email,password,name:application.ownerName});
+ if(created.error)throw Error(created.error.message);
+ const sent=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});
+ if(sent.error)throw Error("Account created, but confirmation email could not be sent: "+sent.error.message+". Use Send verification code to retry.");
+ localStorage.setItem("kc_pending_shop_application",JSON.stringify({email,application}));
+ $("email").value=email;$("password").value="";$("verificationCode").value="";
+ $("registrationStatus").textContent="Account created. A confirmation code has been sent to "+email+". Enter it in the Account section above, verify your email, then sign in to submit your shop application.";
+ out("Registration started. Check your email for the verification code.");
+})()});
+bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
+bind("verifyEmail",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);$("registrationStatus")&&($("registrationStatus").textContent="Email verified. You can now sign in above. Your shop application will be submitted after successful sign-in.");out("Email verified. You can now sign in with your password.")});
 bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
 $("signup").onclick=safe(async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out(role==="owner"?"Account created. Send a verification code and verify your email before signing in or applying for a shop.":"Account created")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
@@ -119,6 +134,14 @@ async function viewOwnerMenu(){
 }
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
 bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
+async function submitPendingShopApplication(){
+ const raw=localStorage.getItem("kc_pending_shop_application");if(!raw)return;
+ const pending=JSON.parse(raw);if(pending.email.toLowerCase()!==String((await auth.getSession()).data?.user?.email||"").toLowerCase())return;
+ const response=await api("/api/shop-applications","POST",pending.application);
+ localStorage.removeItem("kc_pending_shop_application");
+ out("Shop application submitted successfully. Application status: "+response.application.status+". You can manage your application from the dashboard.");
+}
+
 bind("applications",async()=>out(await api("/api/shop-applications/mine")));
 let editableShops=[];
 function showEditableShop(){
