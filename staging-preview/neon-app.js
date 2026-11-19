@@ -87,7 +87,7 @@ $("signin").addEventListener("submit",e=>{
     }else{
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  });
+  })();
 });
 
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
