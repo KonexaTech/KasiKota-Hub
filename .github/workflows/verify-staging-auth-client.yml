@@ -1,0 +1,29 @@
+name: Verify Kota Connect staging auth client
+on:
+  push:
+    branches:
+      - feature/neon-only-cutover
+    paths:
+      - 'staging-preview/neon-app.js'
+      - 'staging-preview/neon-admin.html'
+      - 'staging-preview/neon-owner.html'
+      - 'tests/neon-session-jwt.test.cjs'
+      - '.github/workflows/verify-staging-auth-client.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-auth-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify auth client source and JWT helper
+        run: |
+          node --check staging-preview/neon-app.js
+          node --test tests/neon-session-jwt.test.cjs
+          node --test tests/neon-security-static.test.cjs
