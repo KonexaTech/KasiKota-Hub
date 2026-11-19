@@ -3,7 +3,8 @@ import { parseMenuText, formatMenuText, planMenuChanges } from "./menu-text.mjs"
 const AUTH_URL=new URL("/auth",location.origin).href;
 const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
-const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
+// Use the same-origin Pages proxy; it forwards Authorization to the isolated staging Worker.
+const API="";
 let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 let ownerOrders=[];
