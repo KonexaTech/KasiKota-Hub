@@ -6,6 +6,9 @@ on:
       - feature/neon-only-cutover
     paths:
       - 'worker/**'
+      - 'staging-preview/neon-app.js'
+      - 'tests/neon-session-jwt.test.cjs'
+      - 'tests/neon-security-static.test.cjs'
       - '.github/workflows/deploy-neon-staging.yml'
 jobs:
   staging:
@@ -22,6 +25,8 @@ jobs:
           node --check worker/src/index.js
           node --check worker/src/neon-auth.js
           node --check worker/src/neon-api.js
+          node --check staging-preview/neon-app.js
+          node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-security-static.test.cjs
       - name: Install Worker dependencies
         working-directory: worker
