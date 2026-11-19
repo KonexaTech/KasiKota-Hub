@@ -9,7 +9,7 @@ function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
 function isSignedJwt(value){
-  return typeof value==="string" && /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(value);
+  return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
   // Neon Managed Auth uses a session cookie; its session.token is NOT the API JWT.
