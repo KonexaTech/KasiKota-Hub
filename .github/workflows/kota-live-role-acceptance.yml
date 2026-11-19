@@ -1,6 +1,12 @@
 name: Full Kota Connect owner-admin staging acceptance
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - feature/neon-only-cutover
+    paths:
+      - 'worker/test/release-gates.integration.mjs'
+      - '.github/workflows/kota-live-role-acceptance.yml'
   push:
     branches:
       - feature/neon-only-cutover
@@ -9,7 +15,7 @@ on:
       - '.github/workflows/kota-live-role-acceptance.yml'
 jobs:
   live-owner-admin:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: neon-staging
