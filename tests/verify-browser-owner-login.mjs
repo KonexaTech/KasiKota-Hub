@@ -1,7 +1,7 @@
 // Real headless-browser acceptance: owner signup, sign-out, sign-in and pending-approval lock.
 import { chromium } from "playwright";
 import {randomBytes} from "node:crypto";
-const base="https://kota-connect-neon-staging.pages.dev/neon-owner.html";
+const base="https://kota-connect-neon-staging.pages.dev/neon-owner";
 const email="kota-browser-ci-"+randomBytes(8).toString("hex")+"@example.com";
 const password=randomBytes(32).toString("base64url")+"Aa9!";
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
