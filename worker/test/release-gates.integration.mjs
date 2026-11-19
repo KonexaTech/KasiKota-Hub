@@ -1,97 +1,90 @@
-// End-to-end release-gate checks against an isolated Kota Connect staging Worker.
-// Never point this test at production. It creates one staging pickup order and completes it.
-import assert from "node:assert/strict";
-
-const base = process.env.KOTA_API_BASE || "https://kota-connect-api-dev.siboniisozulu.workers.dev";
-const host = new URL(base).hostname;
-if (!host.endsWith(".workers.dev") || !host.startsWith("kota-connect-api-dev.")) {
-  throw new Error("Safety stop: integration tests may only target the kota-connect-api-dev Worker.");
+// Full authenticated staging acceptance. Requires dedicated CI guest tokens and verified owner/admin JWTs.
+// No credentials or personal data are logged. Orders created on the dev Worker are test_order=true.
+import { randomUUID } from "node:crypto";
+const base=process.env.KOTA_TEST_API_BASE||"https://kota-connect-api-dev.siboniisozulu.workers.dev";
+const env={
+ customer:process.env.KOTA_TEST_CUSTOMER_TOKEN,
+ otherCustomer:process.env.KOTA_TEST_OTHER_CUSTOMER_TOKEN,
+ owner:process.env.KOTA_TEST_OWNER_TOKEN,
+ otherOwner:process.env.KOTA_TEST_OTHER_OWNER_TOKEN,
+ admin:process.env.KOTA_TEST_ADMIN_TOKEN,
+ shop:process.env.KOTA_TEST_SHOP_ID,
+ menu:process.env.KOTA_TEST_MENU_ITEM_ID
+};
+for(const key of ["customer","otherCustomer","owner","otherOwner","admin","shop","menu"])
+ if(!env[key])throw Error("Missing required staging test setting: "+key);
+for(const key of ["customer","otherCustomer"])
+ if(!/^[a-f0-9]{64}$/i.test(env[key]))throw Error(key+" must be a 64-character guest token, not a customer account JWT");
+function authorization(principal){
+ const token=env[principal].replace(/^(?:Bearer|Guest)\s+/i,"");
+ return principal==="customer"||principal==="otherCustomer"?"Guest "+token:"Bearer "+token;
 }
-const env = {
-  customer: process.env.KOTA_TEST_CUSTOMER_TOKEN,
-  otherCustomer: process.env.KOTA_TEST_OTHER_CUSTOMER_TOKEN,
-  owner: process.env.KOTA_TEST_OWNER_TOKEN,
-  otherOwner: process.env.KOTA_TEST_OTHER_OWNER_TOKEN,
-  admin: process.env.KOTA_TEST_ADMIN_TOKEN,
-  shop: process.env.KOTA_TEST_SHOP_ID,
-  menu: process.env.KOTA_TEST_MENU_ITEM_ID,
-};
-for (const [key,value] of Object.entries(env)) {
-  if (!value) throw new Error("Missing required staging test variable: "+key);
+async function call(path,principal,method="GET",body){
+ const headers={accept:"application/json"};
+ if(principal)headers.authorization=authorization(principal);
+ if(body!==undefined)headers["content-type"]="application/json";
+ const response=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000),cache:"no-store"});
+ const data=await response.json().catch(()=>null);
+ return {status:response.status,data};
 }
-const request = async (path, token, method="GET", body) => {
-  const response = await fetch(base.replace(/\/$/,"")+path,{
-    method,
-    headers:{...(token?{authorization:"Bearer "+token}:{}),"content-type":"application/json"},
-    ...(body?{body:JSON.stringify(body)}:{})
-  });
-  const payload = await response.json().catch(()=>({}));
-  return {status:response.status,payload};
-};
-const expect = (actual,status,label) => {
-  assert.equal(actual.status,status,label+" (response: "+JSON.stringify(actual.payload)+")");
-  return actual.payload;
-};
-
-const created = expect(await request("/api/orders",env.customer,"POST",{
-  shop_id:env.shop,customer_name:"Kota Connect staging test",customer_phone:"0000000000",
-  area:"Staging test area",fulfillment_type:"pickup",
-  items:[{menu_item_id:env.menu,quantity:1}]
-}),201,"Customer can place a pickup order");
+function expect(result,status,path){
+ if(result.status!==status)throw Error(path+" expected HTTP "+status+", received "+result.status+" ("+(result.data?.error||"no error detail")+")");
+ return result.data;
+}
+const health=expect(await call("/api/health"),200,"health");
+if(health.ok!==true||health.backend!=="neon")throw Error("Staging API is not connected to Neon");
+const payload=()=>({
+ requestId:randomUUID(),shopId:env.shop,items:[{itemId:env.menu,quantity:1}],
+ customerName:"Kota Connect integration test",customerPhone:"0000000000",
+ area:"Newcastle CBD",fulfillmentType:"pickup",deliveryAddress:""
+});
+const created=expect(await call("/api/orders","customer","POST",payload()),201,"create order");
 const orderId=created.order?.id;
-assert.ok(orderId,"Order creation returns an order ID");
-
-let tracked=expect(await request("/api/orders/"+orderId,env.customer),200,"Customer can track own order");
-assert.equal(tracked.order.status,"pending","New order begins pending");
-assert.equal(tracked.order.history?.length,1,"Initial pending event is recorded");
-
-const ownerList=expect(await request("/api/owner/orders",env.owner),200,"Owner can load incoming orders");
-assert.ok(ownerList.orders.some(o=>o.id===orderId),"Shop owner sees new order in dashboard feed");
-const ownerNotices=expect(await request("/api/notifications",env.owner),200,"Owner can load order notifications");
-assert.ok(ownerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="new_order"),"Owner receives in-app new-order notification");
-
-for (const status of ["accepted","preparing","ready_for_collection","completed"]) {
-  expect(await request("/api/owner/orders/"+orderId+"/status",env.owner,"PATCH",{status,note:"Release-gate staging test"}),200,"Owner can set "+status);
-  tracked=expect(await request("/api/orders/"+orderId,env.customer),200,"Customer can refresh tracking after "+status);
-  assert.equal(tracked.order.status,status,"Customer sees "+status);
-  assert.equal(tracked.order.history.at(-1).new_status,status,"Status history records "+status);
-  const customerNotices=expect(await request("/api/notifications",env.customer),200,"Customer can load own status notifications");
-  assert.ok(customerNotices.notifications.some(n=>n.order_id===orderId&&n.kind==="order_status"),"Customer receives status-change notification");
+if(!orderId)throw Error("Created order response has no ID");
+const original=payload();
+const retry=expect(await call("/api/orders","customer","POST",original),201,"second independent order");
+const secondOrderId=retry.order?.id;
+if(!secondOrderId)throw Error("Second order response has no ID");
+const duplicate=expect(await call("/api/orders","customer","POST",original),200,"idempotent retry");
+if(duplicate.replayed!==true||duplicate.order?.id!==secondOrderId)throw Error("Duplicate request was not replayed");
+const changed=expect(await call("/api/orders","customer","POST",{...original,items:[{itemId:env.menu,quantity:2}]}),409,"tampered retry");
+if(!changed.error)throw Error("Changed idempotency payload did not return an error");
+const ownerOrders=expect(await call("/api/owner/orders","owner"),200,"owner orders");
+if(!ownerOrders.orders?.some(o=>o.id===orderId)||!ownerOrders.orders?.some(o=>o.id===secondOrderId))throw Error("Owner cannot see the shop's new orders");
+const otherOwnerOrders=expect(await call("/api/owner/orders","otherOwner"),200,"other owner orders");
+if(otherOwnerOrders.orders?.some(o=>o.id===orderId||o.id===secondOrderId))throw Error("Other owner can see this shop's orders");
+expect(await call("/api/orders/"+orderId,"otherCustomer"),403,"other customer tracking");
+expect(await call("/api/orders/"+orderId,"otherOwner"),403,"other owner tracking");
+expect(await call("/api/owner/orders/"+orderId+"/status","customer","PATCH",{status:"accepted",note:"guest must not update status"}),401,"customer status update");
+expect(await call("/api/owner/orders/"+orderId+"/status","otherOwner","PATCH",{status:"accepted",note:"other owner must not update status"}),404,"other owner status update");
+for(const status of ["accepted","preparing","ready_for_collection","completed"]){
+ expect(await call("/api/owner/orders/"+orderId+"/status","owner","PATCH",{status,note:"Automated staging status test"}),200,"owner status "+status);
+ const tracked=expect(await call("/api/orders/"+orderId,"customer"),200,"customer tracking "+status);
+ if(tracked.order?.status!==status)throw Error("Customer tracking did not reflect owner status "+status);
 }
-
-const rejectedCreated=expect(await request("/api/orders",env.customer,"POST",{
-  shop_id:env.shop,customer_name:"Kota Connect rejection test",customer_phone:"0000000000",
-  area:"Staging test area",fulfillment_type:"pickup",
-  items:[{menu_item_id:env.menu,quantity:1}]
-}),201,"Customer can create a second order for rejection test");
-const rejectedId=rejectedCreated.order?.id;
-assert.ok(rejectedId,"Rejection test order returns an ID");
-expect(await request("/api/owner/orders/"+rejectedId+"/status",env.owner,"PATCH",{status:"rejected",note:"Staging rejection test"}),200,"Owner can reject an order");
-const rejectedTrack=expect(await request("/api/orders/"+rejectedId,env.customer),200,"Customer can view rejected order");
-assert.equal(rejectedTrack.order.status,"rejected","Customer sees rejected status");
-assert.equal(rejectedTrack.order.history.at(-1).new_status,"rejected","Rejected status is recorded");
-
-const adminOrders=expect(await request("/api/admin/orders",env.admin),200,"Admin can monitor all orders");
-const adminOrder=adminOrders.orders.find(o=>o.id===orderId);
-assert.ok(adminOrder,"Admin can see the completed order");
-assert.ok(adminOrders.orders.some(o=>o.id===rejectedId&&o.status==="rejected"),"Admin can see rejected orders too");
-assert.equal(adminOrder.status,"completed","Admin sees final order status");
-assert.ok(Array.isArray(adminOrder.items)&&adminOrder.items.length===1,"Admin sees line-item details");
-assert.ok(Array.isArray(adminOrder.history)&&adminOrder.history.length>=5,"Admin sees full status history");
-
-expect(await request("/api/orders/"+orderId,env.otherCustomer),404,"Other customer cannot read this order");
-expect(await request("/api/orders/"+orderId,null),401,"Unauthenticated user cannot track an order");
-expect(await request("/api/orders",null,"POST",{}),401,"Unauthenticated user cannot create an order");
-expect(await request("/api/orders/"+orderId,env.otherOwner),404,"Other shop owner cannot read this order");
-expect(await request("/api/owner/orders/"+orderId+"/status",env.otherOwner,"PATCH",{status:"completed"}),404,"Other shop owner cannot update this order");
-expect(await request("/api/owner/orders/"+orderId+"/status",env.customer,"PATCH",{status:"completed"}),404,"Customer cannot update owner order status");
-const otherOwnerOrders=expect(await request("/api/owner/orders",env.otherOwner),200,"Other owner can load only their own order list");
-assert.ok(!otherOwnerOrders.orders.some(o=>o.id===orderId),"Other owner order list excludes this order");
-expect(await request("/api/admin/orders",null),401,"Unauthenticated user cannot access admin orders");
-expect(await request("/api/owner/orders",null),401,"Unauthenticated user cannot access owner orders");
-
-console.log(JSON.stringify({result:"PASS",orderId,gates:{
- customerOrderCreated:true,ownerReceivedOrder:true,ownerStatusTransitions:true,
- customerTrackingHistory:true,adminFullOrderVisibility:true,
- customerAndOwnerIsolation:true,unauthenticatedAccessDenied:true
-}},null,2));
+const items=expect(await call("/api/orders/"+orderId+"/items","customer"),200,"customer line items");
+if(items.items?.length!==1)throw Error("Customer cannot read their saved line-item snapshot");
+const history=expect(await call("/api/orders/"+orderId+"/history","customer"),200,"customer status history");
+for(const status of ["pending","accepted","preparing","ready_for_collection","completed"])
+ if(!history.events?.some(event=>event.new_status===status))throw Error("Order history is missing "+status);
+const customerNotifications=expect(await call("/api/notifications","customer"),200,"customer notifications");
+if(!customerNotifications.notifications?.some(n=>n.kind==="order_status"&&n.order_id===orderId))throw Error("Customer status notifications are missing");
+const ownerNotifications=expect(await call("/api/notifications","owner"),200,"owner notifications");
+if(!ownerNotifications.notifications?.some(n=>n.kind==="new_order"&&n.order_id===orderId))throw Error("Owner new-order notification is missing");
+const adminOrders=expect(await call("/api/admin/orders","admin"),200,"admin order oversight");
+if(!adminOrders.orders?.some(o=>o.id===orderId)||!adminOrders.orders?.some(o=>o.id===secondOrderId))throw Error("Admin cannot see the shop's orders");
+expect(await call("/api/orders/"+orderId+"/items","admin"),200,"admin order items");
+expect(await call("/api/orders/"+orderId+"/history","admin"),200,"admin order history");
+const overview=expect(await call("/api/admin/overview","admin"),200,"admin overview");
+if(overview.commissionPaused!==true||overview.estimatedCommissionCents!==0)throw Error("Launch commission is not paused");
+const rejectedPayload=payload();
+rejectedPayload.requestId=randomUUID();
+const rejected=expect(await call("/api/orders","otherCustomer","POST",rejectedPayload),201,"create rejection test order");
+const rejectedId=rejected.order?.id;
+expect(await call("/api/owner/orders/"+rejectedId+"/status","owner","PATCH",{status:"rejected",note:"Automated rejection test"}),200,"owner reject order");
+const rejectedTrack=expect(await call("/api/orders/"+rejectedId,"otherCustomer"),200,"rejected customer tracking");
+if(rejectedTrack.order?.status!=="rejected")throw Error("Rejected order status did not reach customer tracking");
+expect(await call("/api/orders/"+rejectedId,"customer"),403,"other guest rejected-order isolation");
+for(const route of ["/api/owner/orders","/api/admin/orders"])
+ expect(await call(route,null),401,"anonymous "+route);
+console.log("PASS: guest ordering, idempotency, owner isolation, status transitions, customer tracking, notifications, admin oversight, rejection flow and paused commission");

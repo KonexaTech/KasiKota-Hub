@@ -58,5 +58,5 @@ test("owner sign-in form invokes its asynchronous submit handler",()=>{
  assert.ok(start>=0&&end>start,"sign-in handler must exist");
  const handler=app.slice(start,end);
  assert.match(handler,/safe\(async\(\)=>\{/);
- assert.match(handler,/\}\)\(\);\s*\}\);$/);
+ assert.match(handler.trimEnd(),/\}\)\(\);\s*\}\);$/);
 });

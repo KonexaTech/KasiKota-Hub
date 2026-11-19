@@ -18,3 +18,30 @@ test("All three Neon role pages use shared Firebase-free client",()=>{for(const 
 test("Replayed checkout key cannot silently change items or delivery",()=>{assert.match(api,/lines\.length===data\.items\.length/);assert.match(api,/lines\.some\(y=>y\.id===x\.itemId&&y\.quantity===x\.quantity\)/);assert.match(api,/existing\.delivery_address/);assert.match(api,/replay\.delivery_address/)});
 
 test("Development Worker pins Neon database target and reports mismatch safely",()=>{const config=fs.readFileSync("worker/wrangler.jsonc","utf8");assert.match(worker,/EXPECTED_NEON_HOST/);assert.match(worker,/Database target does not match development branch/);assert.match(config,/ep-lively-leaf-za5rtfhs\.c-2\.eu-west-2\.aws\.neon\.tech/);assert.match(api,/wrong_database_target/);assert.doesNotMatch(worker,/console\.log\(.*DATABASE_URL/)});
+
+const stagingApi=fs.readFileSync("staging-preview/neon-app.js","utf8");
+const stagingOwner=fs.readFileSync("staging-preview/neon-owner.html","utf8");
+const stagingAdmin=fs.readFileSync("staging-preview/neon-admin.html","utf8");
+test("Authenticated Neon users must verify email and must not be actively banned",()=>{
+ assert.match(api,/emailVerified/);
+ assert.match(api,/Email verification required/);
+ assert.match(api,/banExpires/);
+ assert.match(api,/Account is suspended/);
+});
+test("Development Worker flags every newly created order as a test order",()=>{
+ assert.match(api,/const testOrder=url\.hostname==="kota-connect-api-dev\.siboniisozulu\.workers\.dev"/);
+ assert.match(api,/test_order,client_request_id/);
+});
+test("Launch commission is paused rather than estimated or collected",()=>{
+ assert.match(api,/commissionPaused:true/);
+ assert.match(api,/estimatedCommissionCents:0/);
+ assert.match(api,/Commission is paused for launch/);
+ assert.doesNotMatch(api,/eligibleCompletedOrders:completed|estimatedCommissionCents:completed\*50/);
+});
+test("Owner and administrator dashboards are login-only and show email verification",()=>{
+ assert.doesNotMatch(stagingOwner,/id="signup"/);
+ assert.doesNotMatch(stagingAdmin,/id="signup"/);
+ assert.match(stagingApi,/emailVerified===false/);
+ assert.match(stagingApi,/verifyEmail\(\{email,otp\}\)/);
+ assert.match(stagingApi,/loadOwnerOrders\(false\)\.catch/);
+});

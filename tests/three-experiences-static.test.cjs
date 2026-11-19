@@ -47,6 +47,8 @@ test("shop registration opens as a modal from customer navigation",()=>{
   assert.match(customer,/id="regPassword"/);
   assert.match(customer,/id="closeRegistration"/);
   assert.doesNotMatch(owner,/shopRegistrationForm|registerShop|regOwnerName/);
+  assert.doesNotMatch(owner,/id="signup"/,"Owner dashboard must not offer account self-registration");
+  assert.doesNotMatch(admin,/id="signup"/,"Admin dashboard must not offer account self-registration");
 });
 test("owner account must verify email and receive admin approval before dashboard access",()=>{
   const ownerClient=fs.readFileSync("staging-preview/neon-app.js","utf8");

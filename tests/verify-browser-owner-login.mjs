@@ -1,53 +1,35 @@
-// Real headless-browser acceptance: owner signup, sign-out, sign-in and pending-approval lock.
+// Browser acceptance for customer registration and role-protected dashboards.
 import { chromium } from "playwright";
-import {randomBytes} from "node:crypto";
-const base="https://kota-connect-neon-staging.pages.dev/neon-owner";
-const email="kota-browser-ci-"+randomBytes(8).toString("hex")+"@example.com";
-const password=randomBytes(32).toString("base64url")+"Aa9!";
+const base="https://kota-connect-neon-staging.pages.dev";
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
-const authTraffic=[];
 const errors=[];
-let page;
-async function activity(){
- await page.waitForFunction(()=>{
-  const text=document.querySelector("#result")?.textContent||"";
-  return text!=="Ready" && text!=="Ready." && !!text.trim();
- },null,{timeout:30000});
- return (await page.locator("#result").textContent())||"";
-}
 try{
- page=await browser.newPage({ignoreHTTPSErrors:false});
- page.on("response",response=>{
-  try{
-   const url=new URL(response.url());
-   if(url.host==="kota-connect-neon-staging.pages.dev" &&
-       (url.pathname.startsWith("/auth/")||url.pathname==="/api/me"||url.pathname==="/api/owner/access"))
-     authTraffic.push({path:url.pathname,status:response.status()});
-  }catch{}
- });
- page.on("pageerror",e=>{errors.push(String(e.message||e).slice(0,180))});
- await page.goto(base,{waitUntil:"domcontentloaded",timeout:30000});
- await page.locator("#email").fill(email);
- await page.locator("#password").fill(password);
- await page.locator("#signup").click();
- const signupActivity=await activity();
- console.log(JSON.stringify({stage:"browser_signup",success:signupActivity.includes("Account created"),error:signupActivity.startsWith("Error:")?signupActivity.slice(0,240):null}));
- if(signupActivity.startsWith("Error:"))throw Error("Browser signup: "+signupActivity.slice(0,200));
- await page.locator("#signout").click();
- await page.waitForFunction(()=>document.querySelector("#identity")?.textContent?.includes("Not signed in"),null,{timeout:30000});
- await page.locator("#email").fill(email);
- await page.locator("#password").fill(password);
- await page.locator("#signin button").click();
- await page.waitForFunction(()=>{
-   const identity=document.querySelector("#identity")?.textContent||"";
-   const result=document.querySelector("#result")?.textContent||"";
-   return identity.toLowerCase().includes("awaiting administrator approval")||result.startsWith("Error:");
- },null,{timeout:30000});
- const finalActivity=(await page.locator("#result").textContent())||"";
- const identity=(await page.locator("#identity").textContent())||"";
- const pendingApproval=identity.toLowerCase().includes("awaiting administrator approval");
- const allowed=await page.locator("[data-restricted-panel]").first().evaluate(el=>!el.hidden);
- console.log(JSON.stringify({stage:"browser_owner_login",pendingApproval,allowed,activityError:finalActivity.startsWith("Error:")?finalActivity.slice(0,240):null,traffic:authTraffic.slice(-20),pageErrors:errors.slice(-5)}));
- if(!pendingApproval||allowed||finalActivity.startsWith("Error:"))throw Error("Owner login or pending-approval access control failed");
- console.log("PASS: browser signup -> signout -> signin -> signed JWT -> owner dashboard remains locked pending approval");
+ const page=await browser.newPage();
+ page.on("pageerror",e=>errors.push(String(e.message||e).slice(0,160)));
+ await page.goto(base+"/neon-customer",{waitUntil:"domcontentloaded",timeout:30000});
+ if(await page.locator("#openShopRegistration").count()!==1)throw Error("Customer page is missing the Register your shop button");
+ if(await page.locator("#registerShop").count()!==1)throw Error("Customer page is missing the shop registration modal");
+ if(await page.locator("#signin").count()!==0)throw Error("Customer checkout must not require a customer account");
+ for(const [role,path,route] of [
+  ["owner","/neon-owner","/api/owner/orders"],
+  ["admin","/neon-admin","/api/admin/orders"]
+ ]){
+  await page.goto(base+path,{waitUntil:"domcontentloaded",timeout:30000});
+  if(await page.locator("#signin").count()!==1)throw Error(role+" sign-in form is missing");
+  if(await page.locator("#signup").count()!==0)throw Error(role+" dashboard still offers self-registration");
+  if(await page.locator("#sendVerification").count()!==1||await page.locator("#verifyEmail").count()!==1)throw Error(role+" email verification controls are missing");
+  if(await page.locator("#verificationCode").count()!==1)throw Error(role+" verification code input is missing");
+  const visible=await page.locator("[data-restricted-panel]").evaluateAll(els=>els.some(el=>!el.hidden));
+  if(visible)throw Error(role+" restricted dashboard panels are visible without authentication");
+  const anonymous=await page.evaluate(async route=>fetch(route,{cache:"no-store"}).then(r=>({status:r.status})),route);
+  if(anonymous.status!==401)throw Error(role+" API route should reject anonymous access, got "+anonymous.status);
+  const guest=await page.evaluate(async route=>{
+   const bytes=crypto.getRandomValues(new Uint8Array(32));
+   const token=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
+   return fetch(route,{headers:{authorization:"Guest "+token},cache:"no-store"}).then(r=>({status:r.status}));
+  },route);
+  if(guest.status!==401)throw Error(role+" API route should reject guest tokens, got "+guest.status);
+ }
+ if(errors.length)throw Error("Browser page errors: "+errors.join("; "));
+ console.log("PASS: customer registration modal, no customer login, owner/admin verification controls and anonymous/guest API denial");
 }finally{await browser.close()}
