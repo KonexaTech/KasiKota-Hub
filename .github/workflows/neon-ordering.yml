@@ -39,3 +39,8 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
+      - name: Exercise all dashboard buttons in isolated Chromium mocks
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium
+          node tests/verify-browser-all-buttons.mjs
