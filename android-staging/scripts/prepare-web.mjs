@@ -3,6 +3,7 @@ const root=resolve(import.meta.dirname,"../.."),www=resolve(import.meta.dirname,
 await mkdir(www,{recursive:true});
 await copyFile(resolve(root,"neon-customer.html"),resolve(www,"index.html"));
 await copyFile(resolve(root,"neon-app.js"),resolve(www,"neon-app.js"));
+await copyFile(resolve(root,"menu-text.mjs"),resolve(www,"menu-text.mjs"));
 await copyFile(resolve(root,"premium.css"),resolve(www,"premium.css"));
 const html=await readFile(resolve(www,"index.html"),"utf8");
 if(!html.includes("neon-app.js")||!html.includes('data-role="customer"'))throw Error("Neon staging entrypoint not found");
