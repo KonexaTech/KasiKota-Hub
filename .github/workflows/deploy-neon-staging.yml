@@ -16,6 +16,8 @@ on:
       - 'tests/verify-live-auth-http.mjs'
       - 'tests/verify-live-neon-owner-auth.mjs'
       - 'tests/verify-browser-owner-login.mjs'
+      - 'tests/verify-live-guest-order.mjs'
+      - 'worker/test/release-gates.integration.mjs'
       - '.github/workflows/deploy-neon-staging.yml'
 jobs:
   staging:
@@ -38,6 +40,8 @@ jobs:
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-security-static.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
+          node --check tests/verify-live-guest-order.mjs
+          node --check worker/test/release-gates.integration.mjs
       - name: Install Worker dependencies
         working-directory: worker
         run: npm install --no-audit --no-fund
@@ -72,11 +76,13 @@ jobs:
           if(!preflight.ok||preflight.headers.get("access-control-allow-origin")!=="https://siboniisozulu-alt.github.io")throw Error("Browser CORS preflight failed");
           console.log("Live anonymous staging API checks passed");
           NODE
+      - name: Verify live guest checkout, R5 delivery, idempotency and tracking
+        run: node tests/verify-live-guest-order.mjs
       - name: Wait for matching Cloudflare Pages client
         run: |
           for attempt in $(seq 1 30); do
             page="$(curl --silent --show-error --fail https://kota-connect-neon-staging.pages.dev/neon-admin || true)"
-            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261119-owner-signin-v10'; then
+            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261119-audit-fix-v1'; then
               echo "Matching Pages dashboard client is live"
               exit 0
             fi
@@ -92,5 +98,21 @@ jobs:
         run: |
           npm install --no-save playwright
           npx playwright install chromium
-      - name: Verify owner sign-in and approval lock in a real browser
+      - name: Verify customer registration and owner/admin access gates in a real browser
         run: node tests/verify-browser-owner-login.mjs
+      - name: Run full authenticated customer-owner-admin integration when credentials exist
+        env:
+          KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+          KOTA_TEST_CUSTOMER_TOKEN: ${{ secrets.KOTA_TEST_CUSTOMER_TOKEN }}
+          KOTA_TEST_OTHER_CUSTOMER_TOKEN: ${{ secrets.KOTA_TEST_OTHER_CUSTOMER_TOKEN }}
+          KOTA_TEST_OWNER_TOKEN: ${{ secrets.KOTA_TEST_OWNER_TOKEN }}
+          KOTA_TEST_OTHER_OWNER_TOKEN: ${{ secrets.KOTA_TEST_OTHER_OWNER_TOKEN }}
+          KOTA_TEST_ADMIN_TOKEN: ${{ secrets.KOTA_TEST_ADMIN_TOKEN }}
+          KOTA_TEST_SHOP_ID: ${{ secrets.KOTA_TEST_SHOP_ID }}
+          KOTA_TEST_MENU_ITEM_ID: ${{ secrets.KOTA_TEST_MENU_ITEM_ID }}
+        run: |
+          if [ -n "$KOTA_TEST_CUSTOMER_TOKEN" ] && [ -n "$KOTA_TEST_OTHER_CUSTOMER_TOKEN" ] && [ -n "$KOTA_TEST_OWNER_TOKEN" ] && [ -n "$KOTA_TEST_OTHER_OWNER_TOKEN" ] && [ -n "$KOTA_TEST_ADMIN_TOKEN" ] && [ -n "$KOTA_TEST_SHOP_ID" ] && [ -n "$KOTA_TEST_MENU_ITEM_ID" ]; then
+            node worker/test/release-gates.integration.mjs
+          else
+            echo "SKIPPED: dedicated guest, verified owner/admin and staging shop test credentials are not all configured"
+          fi
