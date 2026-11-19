@@ -65,21 +65,6 @@ async function showIdentity(){
   }
 }
 $("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");if(role==="owner")await submitPendingShopApplication();await showIdentity();if(role==="owner"&&dashboardAccess){await loadOwnerOrders(false);out("Signed in. Your shop is approved.");}else if(role==="owner"){await auth.signOut();await showIdentity();out("Your email is verified and your shop application has been submitted. You can sign in to the owner dashboard after the administrator approves your shop.");}else if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");else out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
-$("shopRegistrationForm").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{
- const email=required("regEmail","Email").toLowerCase();
- const password=required("regPassword","Password");
- if(password!==required("regPasswordConfirm","Password confirmation"))throw Error("Passwords do not match.");
- if(password.length<12)throw Error("Use a password with at least 12 characters.");
- const application={ownerName:required("regOwnerName","Owner name"),shopName:required("regShopName","Shop name"),phone:required("regPhone","Phone"),area:required("regArea","Area"),address:required("regAddress","Address"),description: $("regDescription").value.trim()};
- const created=await auth.signUp.email({email,password,name:application.ownerName});
- if(created.error)throw Error(created.error.message);
- const sent=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});
- if(sent.error)throw Error("Account created, but confirmation email could not be sent: "+sent.error.message+". Use Send verification code to retry.");
- localStorage.setItem("kc_pending_shop_application",JSON.stringify({email,application}));
- $("email").value=email;$("password").value="";$("verificationCode").value="";
- $("registrationStatus").textContent="Account created. A confirmation code has been sent to "+email+". Enter it in the Account section above, verify your email, then sign in to submit your shop application.";
- out("Registration started. Check your email for the verification code.");
-})()});
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);$("registrationStatus")&&($("registrationStatus").textContent="Email verified. You can now sign in above. Your shop application will be submitted after successful sign-in.");out("Email verified. You can now sign in with your password.")});
 bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
