@@ -70,3 +70,23 @@ test("shop registration is located on the customer page, not the owner dashboard
   assert.match(registration,/await auth\.signOut\(\)/);
   assert.doesNotMatch(owner,/id="shopRegistrationForm"|id="registerShop"/);
 });
+
+test("readable notifications appear inside both dashboards, with one-tap read and safe DOM text",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ for(const page of [owner,admin]){
+   assert.match(page,/id="notificationList"/);
+   assert.match(page,/id="notifications"/);
+   assert.match(page,/id="markRead"/);
+   assert.match(page,/neon-app\.js\?v=20261119-notifications-v1/);
+ }
+ assert.match(client,/renderNotifications\(notifications\)/);
+ assert.match(client,/notification\.title/);
+ assert.match(client,/notification\.read_at/);
+ assert.match(client,/button\.textContent="Mark as read"/);
+ assert.match(client,/body\.textContent=readableNotificationBody\(notification\)/);
+ assert.match(client,/aria-busy/);
+ assert.match(backend,/LEFT JOIN kc_orders o ON o\.id=n\.order_id/);
+ assert.match(backend,/n\.recipient_subject=\$1/);
+ assert.match(backend,/New shop application/);
+ assert.match(backend,/FROM kc_admins/);
+});
