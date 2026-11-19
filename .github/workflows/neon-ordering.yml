@@ -22,6 +22,11 @@ jobs:
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
           node --check staging-preview/kota-shop-registration.mjs
+          node --check tests/verify-live-auth-http.mjs
+          node --check tests/verify-live-neon-owner-auth.mjs
+          node --check tests/verify-live-guest-order.mjs
+          node --check tests/verify-browser-owner-login.mjs
+          node --check worker/test/release-gates.integration.mjs
           node --test tests/postmerge-integrity.test.mjs
           node --test tests/customer-journey.test.mjs
           node --test tests/customer-price-confirm.test.cjs
@@ -32,3 +37,4 @@ jobs:
           node --test tests/neon-security-static.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
+          node --test worker/test/role-policy.test.mjs
