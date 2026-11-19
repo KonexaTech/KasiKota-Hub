@@ -12,7 +12,7 @@ export async function verifiedNeonSubject(request, env) {
     let jwks = jwksCache.get(jwksUrl.href);
     if (!jwks) { jwks = createRemoteJWKSet(jwksUrl); jwksCache.set(jwksUrl.href, jwks); }
     const issuer = new URL(base).origin;
-    const { payload } = await jwtVerify(token, jwks, { algorithms: ["EdDSA"], issuer });
+    const { payload } = await jwtVerify(token, jwks, { algorithms: ["EdDSA"], issuer, audience: issuer });
     if (typeof payload.sub !== "string" || !payload.sub || !payload.exp || !payload.iat) return null;
     return payload.sub;
   } catch { return null; }
