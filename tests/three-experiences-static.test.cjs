@@ -64,7 +64,7 @@ test("shop registration is located on the customer page, not the owner dashboard
   const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
   assert.match(customer,/id="openShopRegistration"/);
   assert.match(customer,/src="\.\/kota-shop-registration\.mjs"/);
-  assert.match(registration,/POST.*\/api\/shop-applications/s);
+  assert.ok(registration.includes('fetch("/api/shop-applications",{method:"POST"'));
   assert.match(registration,/await auth\.signOut\(\)/);
   assert.doesNotMatch(owner,/id="shopRegistrationForm"|id="registerShop"/);
 });
