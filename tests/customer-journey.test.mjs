@@ -27,6 +27,6 @@ test("confirmation quote shows item price and delivery fee, but backend controls
 });
 
 test("backend applies the same R5 delivery fee to new orders",()=>{
- assert.match(neonApi,/const delivery=data\\.fulfillmentType==="delivery"\\?500:0;/);
- assert.doesNotMatch(neonApi,/const delivery=data\\.fulfillmentType==="delivery"\\?1500:0;/);
+ assert.match(neonApi,/const delivery=data\.fulfillmentType==="delivery"\?500:0;/);
+ assert.doesNotMatch(neonApi,/const delivery=data\.fulfillmentType==="delivery"\?1500:0;/);
 });
