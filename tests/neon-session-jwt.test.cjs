@@ -2,52 +2,46 @@ const test=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const vm=require("node:vm");
-
-const src=fs.readFileSync("staging-preview/neon-app.js","utf8");
-assert.match(src,/createAuthClient\(AUTH_URL\)/,"Use the supported Neon vanilla client");
-const start=src.indexOf("function isSignedJwt(value){");
-const end=src.indexOf("\nasync function api(path,",start);
-assert.ok(start>=0 && end>start,"Signed JWT helper is present");
-const helper=src.slice(start,end);
-function client(auth){
-  const context={auth};
-  vm.runInNewContext(helper+";globalThis.apiJwt=apiJwt;globalThis.isSignedJwt=isSignedJwt;",context);
-  return context;
+const app=fs.readFileSync("staging-preview/neon-app.js","utf8");
+const first=app.indexOf("function isSignedJwt(value){");
+const last=app.indexOf("\nasync function api(path,",first);
+assert.ok(first>=0&&last>first,"JWT helper must be present");
+const helper=app.slice(first,last);
+function create(response){
+  const calls=[];
+  const context={
+    fetch:async (url,options)=>{calls.push({url,options});if(response instanceof Error)throw response;return response;},
+  };
+  vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
+  return {request:context.apiJwt,calls};
 }
-const user={id:"owner-test"};
-test("use JWT from official token endpoint", async()=>{
-  const c=client({token:async()=>({data:{token:"head.payload.sig"}})});
-  assert.equal(await c.apiJwt(),"head.payload.sig");
+const http=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
+test("direct token endpoint returns signed JWT and sends first-party cookie",async()=>{
+  const {request,calls}=create(http(200,{token:"head.payload.signature"}));
+  assert.equal(await request(),"head.payload.signature");
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,"https://site.pages.dev/auth/token");
+  assert.equal(calls[0].options.credentials,"include");
+  assert.equal(calls[0].options.cache,"no-store");
 });
-test("recover JWT from documented getSession response header",async()=>{
-  const c=client({
-    token:async()=>({data:{token:null}}),
-    getSession:async options=>{
-      options.fetchOptions.onSuccess({response:{headers:{get:n=>n==="set-auth-jwt"?"head.payload.sig":null}}});
-      return {data:{user,session:{token:"opaque-session-id"}}};
-    }
-  });
-  assert.equal(await c.apiJwt(),"head.payload.sig");
+test("nested token responses are also recognized",async()=>{
+  assert.equal(await create(http(200,{data:{token:"head.payload.signature"}})).request(),"head.payload.signature");
 });
-test("never forward Better Auth session ID as JWT",async()=>{
-  const c=client({token:async()=>({data:{token:"opaque-session-id"}}),getSession:async()=>({data:{user,session:{token:"opaque-session-id"}}})});
-  await assert.rejects(c.apiJwt(),/Neon JWT token could not be retrieved/);
+test("HTTP 401 is visible without leaking session secrets",async()=>{
+  await assert.rejects(create(http(401,{error:{message:"Unauthorized"}})).request(),/HTTP 401.*Unauthorized/);
 });
-test("reject unauthenticated user",async()=>{
-  const c=client({token:async()=>({data:null}),getSession:async()=>({data:{user:null}})});
-  await assert.rejects(c.apiJwt(),/Sign in to continue/);
+test("200 without JWT is diagnosed instead of sending an opaque ID",async()=>{
+  await assert.rejects(create(http(200,{data:{session:{token:"opaque-session"}}})).request(),/HTTP 200 without a signed JWT/);
 });
-test("use signed JWT header when token endpoint errors",async()=>{
-  const c=client({
-    token:async()=>{throw Error("network")},
-    getSession:async options=>{
-      options.fetchOptions.onSuccess({response:{headers:{get:()=> "header.payload.signature"}}});
-      return {data:{user}};
-    }
-  });
-  assert.equal(await c.apiJwt(),"header.payload.signature");
+test("non-JWT token is rejected",async()=>{
+  await assert.rejects(create(http(200,{token:"opaque-id"})).request(),/without a signed JWT/);
 });
-test("staging source parses as valid module body",()=>{
-  const noImport=src.replace(/^import \{ createAuthClient \} from "[^"]+";\s*/,"");
-  assert.doesNotThrow(()=>new vm.Script(noImport));
+test("network failures have a distinct message",async()=>{
+  await assert.rejects(create(new Error("network")).request(),/could not be reached/);
+});
+test("entire app script parses and still verifies owner/admin via server",()=>{
+  const script=app.replace(/^import \{ createAuthClient \} from "[^"]+";\s*/,"");
+  assert.doesNotThrow(()=>new vm.Script(script));
+  assert.match(app,/me\.admin===false/);
+  assert.match(app,/me\.admin===true/);
 });

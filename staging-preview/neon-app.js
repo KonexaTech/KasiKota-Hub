@@ -12,23 +12,30 @@ function isSignedJwt(value){
   return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  // Neon Managed Auth uses a session cookie; its session.token is NOT the API JWT.
-  // The official Neon JWT plugin exposes the token() method and a set-auth-jwt header.
-  let tokenError=null;
+  // Avoid a known SDK path that can return cached session data in place of a JWT.
+  const tokenUrl=(AUTH_URL.endsWith("/")?AUTH_URL.slice(0,-1):AUTH_URL)+"/token";
+  let response;
   try{
-    const result=await auth.token();
-    if(isSignedJwt(result?.data?.token))return result.data.token;
-    if(result?.error)tokenError=result.error.message;
-  }catch(e){tokenError=e?.message||"Token endpoint unavailable";}
-  let headerToken=null;
-  const session=await auth.getSession({fetchOptions:{onSuccess(ctx){
-    headerToken=ctx.response.headers.get("set-auth-jwt");
-  }}});
-  if(session.error)throw Error(session.error.message);
-  if(isSignedJwt(headerToken))return headerToken;
-  if(!session.data?.user)throw Error("Sign in to continue");
-  // Do not accept a session ID, fabricate a JWT, or relax API permissions.
-  throw Error("Signed in, but the Neon JWT token could not be retrieved"+(tokenError?": "+tokenError:"")+". Check browser cookie settings or try a fresh sign-in.");
+    response=await fetch(tokenUrl,{
+      method:"GET",credentials:"include",cache:"no-store",
+      headers:{"accept":"application/json"}
+    });
+  }catch{
+    throw Error("Neon JWT endpoint could not be reached");
+  }
+  let result;
+  try{result=await response.json()}catch{
+    throw Error("Neon JWT endpoint returned an invalid response (HTTP "+response.status+")");
+  }
+  const token=result?.token??result?.data?.token;
+  if(response.ok&&isSignedJwt(token))return token;
+  const state=!response.ok
+    ? "HTTP "+response.status
+    : "HTTP "+response.status+" without a signed JWT";
+  const reason=typeof result?.error?.message==="string"?result.error.message:
+    typeof result?.message==="string"?result.message:null;
+  // Never print the session cookie or a returned token in diagnostic output.
+  throw Error("Neon JWT endpoint failed ("+state+")"+(reason?": "+reason:""));
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}

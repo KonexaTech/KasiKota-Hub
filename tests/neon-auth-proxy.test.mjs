@@ -58,7 +58,8 @@ test("non auth/API assets retain existing Pages asset handler",async()=>{
 test("browser app uses same-origin Auth and server-verified role checking",()=>{
   const app=fs.readFileSync("staging-preview/neon-app.js","utf8");
   assert.match(app,/const AUTH_URL=new URL\("\/auth",location.origin\)\.href;/);
-  assert.match(app,/auth\.token\(\)/);
+  assert.match(app,/fetch\(tokenUrl,/);
+  assert.match(app,/credentials:"include"/);
   assert.match(app,/\/api\/me/);
   assert.match(app,/me\.admin===false/);
   assert.match(app,/me\.admin===true/);
