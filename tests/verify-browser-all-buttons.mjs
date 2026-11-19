@@ -165,10 +165,11 @@ try{
  await resultContains(owner,"Status saved");
  assert.equal(order.status,"accepted");
  await owner.locator("#notifications").click();
- await resultContains(owner,"New test order");
- await owner.locator("#notificationId").fill(uuids.notif);
- await owner.locator("#markRead").click();
+ assert.match(await owner.locator("#notificationList").innerText(),/New test order/);
+ assert.match(await owner.locator("#notificationList").innerText(),/Mock only/);
+ await owner.locator("#notificationList button").click();
  await resultContains(owner,"Notification marked as read");
+ assert.match(await owner.locator("#notificationList").innerText(),/Read/);
  results.push("owner: shops, editing, menu, orders, status and notifications passed (mocked API)");
  await authActions(owner,"owner");
  await owner.close();
@@ -189,7 +190,8 @@ try{
  await admin.locator("#orders").click();
  await resultContains(admin,"TEST-LOCAL-001");
  await admin.locator("#notifications").click();
- await resultContains(admin,"New test order");
+ assert.match(await admin.locator("#notificationList").innerText(),/New test order/);
+ assert.match(await admin.locator("#notificationList").innerText(),/Read/);
  await admin.locator("#notificationId").fill(uuids.notif);
  await admin.locator("#markRead").click();
  await resultContains(admin,"Notification marked as read");
