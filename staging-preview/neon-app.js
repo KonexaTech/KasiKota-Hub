@@ -1,4 +1,5 @@
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
+import { parseMenuText, formatMenuText, planMenuChanges } from "./menu-text.mjs";
 const AUTH_URL=new URL("/auth",location.origin).href;
 const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
@@ -7,6 +8,7 @@ let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
+function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
 function isSignedJwt(value){
   return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
@@ -74,12 +76,45 @@ bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId
 bind("timeline",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history")));
 }
 if(role==="owner"){
+let menuLoadedShop="",menuSnapshot="";
+const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
+const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
+async function ownerMenu(shopId){const data=await api(menuUrl(shopId));if(!Array.isArray(data.items))throw Error("Unable to read shop menu");return data.items}
+async function viewOwnerMenu(){
+  const shopId=required("shop","Shop"),items=await ownerMenu(shopId);
+  menuLoadedShop=shopId;menuSnapshot=menuFingerprint(items);
+  $("menuText").value=formatMenuText(items);
+  out("Loaded "+items.filter(item=>item.available).length+" available menu items. Edit the text and press Save menu and prices.");
+}
+$("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
 bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
 bind("applications",async()=>out(await api("/api/shop-applications/mine")));
-bind("myShops",async()=>{const r=await api("/api/owner/shops");option($("shop"),r.shops,x=>x.name);out(r)});
-bind("myMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu")));
-bind("addMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu","POST",{name:$("itemName").value,priceCents:Math.round(Number($("price").value)*100)})));
-bind("editMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu/"+encodeURIComponent($("menuItemId").value),"PATCH",{name:$("editItemName").value,priceCents:Math.round(Number($("editPrice").value)*100),available:$("available").checked})));
+bind("myShops",async()=>{const r=await api("/api/owner/shops");option($("shop"),r.shops,x=>x.name);menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
+bind("myMenu",viewOwnerMenu);
+bind("saveMenu",async()=>{
+  const shopId=required("shop","Shop");
+  if(menuLoadedShop!==shopId||!menuSnapshot)throw Error("Press View menu to load this shop's current menu before saving.");
+  const desired=parseMenuText($("menuText").value);
+  const existing=await ownerMenu(shopId);
+  if(menuFingerprint(existing)!==menuSnapshot)throw Error("This menu was changed since it was loaded. Press View menu to reload before saving.");
+  const changes=planMenuChanges(existing,desired);
+  const removed=changes.filter(change=>change.type==="hide").length;
+  if(removed&&!window.confirm("Make "+removed+" item(s) unavailable for customers? Existing orders will be preserved.")){out("Save cancelled. No menu changes made.");return}
+  if(!changes.length){out("Menu already up to date. "+desired.length+" items.");return}
+  let saved=0;
+  try{
+    for(const change of changes){
+      if(change.type==="create"){
+        await api(menuUrl(shopId),"POST",{name:change.name,priceCents:change.priceCents});
+      }else{
+        await api(menuUrl(shopId)+"/"+encodeURIComponent(change.id),"PATCH",{name:change.name,priceCents:change.priceCents,available:change.available});
+      }
+      saved++;
+    }
+  }catch(e){throw Error("Menu save incomplete ("+saved+"/"+changes.length+" changes applied): "+e.message+". Keep your draft and press View menu to review current data before trying again.")}
+  await viewOwnerMenu();
+  out("Menu saved: "+desired.length+" available items; "+removed+" made unavailable. Existing order history preserved.");
+});
 bind("myOrders",async()=>out(await api("/api/owner/orders")));
 bind("orderItems",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/items")));
 bind("updateStatus",async()=>out(await api("/api/owner/orders/"+encodeURIComponent($("orderId").value)+"/status","PATCH",{status:$("status").value,note:$("note").value})));
