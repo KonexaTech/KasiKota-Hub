@@ -120,7 +120,25 @@ async function viewOwnerMenu(){
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
 bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
 bind("applications",async()=>out(await api("/api/shop-applications/mine")));
-bind("myShops",async()=>{const r=await api("/api/owner/shops");option($("shop"),r.shops,x=>x.name);menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
+let editableShops=[];
+function showEditableShop(){
+  const current=editableShops.find(s=>s.id===$("shop").value);
+  $("editShopName").value=current?.name||"";
+  $("editShopArea").value=current?.area||"";
+  $("editShopPhone").value=current?.phone||"";
+  $("editShopAddress").value=current?.address||"";
+}
+$("shop").addEventListener("change",showEditableShop);
+bind("saveShopDetails",async()=>{
+  const id=required("shop","Shop");
+  const body={name:required("editShopName","Shop name"),area:required("editShopArea","Shop area"),phone:required("editShopPhone","Shop phone"),address:$("editShopAddress").value.trim()};
+  const result=await api("/api/owner/shops/"+encodeURIComponent(id),"PATCH",body);
+  const index=editableShops.findIndex(s=>s.id===id);if(index>=0)editableShops[index]={...editableShops[index],...result.shop};
+  const selected=$("shop").selectedIndex;if(selected>=0)$("shop").options[selected].textContent=result.shop.name;
+  out("Shop details saved. Approved status and existing orders were not changed.");
+});
+
+bind("myShops",async()=>{const r=await api("/api/owner/shops");editableShops=r.shops;option($("shop"),r.shops,x=>x.name);showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
 bind("myMenu",viewOwnerMenu);
 bind("saveMenu",async()=>{
   const shopId=required("shop","Shop");
@@ -213,6 +231,23 @@ bind("updateStatus",async()=>{
 });
 }
 if(role==="admin"){
+bind("adminOverview",async()=>{
+  const data=await api("/api/admin/overview");
+  $("registeredShops").textContent=String(data.shopCount);
+  $("approvedShops").textContent=String(data.approvedShopCount);
+  $("pendingApplications").textContent=String((data.applications||[]).find(x=>x.status==="pending")?.count||0);
+  $("commissionDue").textContent="R"+(data.estimatedCommissionCents/100).toFixed(2)+" estimated";
+  $("commissionCollected").textContent=data.collectedCommissionCents===null?"Not yet verifiable":"R"+(data.collectedCommissionCents/100).toFixed(2);
+  $("commissionNotice").textContent=data.commissionCollectionStatus||"Commission collection reports require confirmed payment records.";
+  const list=$("adminShopList");list.replaceChildren();
+  for(const shop of data.shops||[]){
+    const entry=document.createElement("div");entry.style.cssText="border:1px solid #d8e6dc;border-radius:12px;padding:12px";
+    const title=document.createElement("strong");title.textContent=shop.name+" — "+(shop.approved?"Approved":"Not approved");
+    const address=document.createElement("p");address.textContent=[shop.area,shop.address,shop.phone].filter(Boolean).join(" · ");
+    entry.append(title,address);list.append(entry);
+  }
+  out("Administrator dashboard loaded. Registered shops: "+data.shopCount);
+});
 bind("applications",async()=>out(await api("/api/admin/shop-applications")));
 bind("approve",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"approved"})));
 bind("reject",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"rejected"})));
