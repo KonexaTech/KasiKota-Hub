@@ -66,7 +66,7 @@ test("password reset uses documented Neon Auth OTP request and completion",()=>{
 test("notification Mark read validates a nonempty UUID",()=>{
  assert.ok(dashboards.includes('required("notificationId","Notification ID")'));
  assert.ok(dashboards.includes('if(!orderIdPattern.test(id))'));
- assert.ok(dashboards.includes('await pollNotifications()'));
+ assert.ok(dashboards.includes('await pollNotifications(true)'));
 });
 
 test("dashboard actions route to authenticated APIs; roles are separate",()=>{

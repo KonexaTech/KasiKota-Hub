@@ -13,7 +13,7 @@ let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
-function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
+function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});if(!dashboardAccess){$("notificationList")?.replaceChildren();if($("unread"))$("unread").textContent="Sign in to see notifications."}}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -71,6 +71,7 @@ $("signin").addEventListener("submit",e=>{
     }
     if(role==="owner"&&dashboardAccess){
       await loadOwnerOrders(false);
+      await pollNotifications(true);
       out("Signed in. Your shop is approved.");
     }else if(role==="owner"){
       const identity=$("identity").textContent||"";
@@ -85,6 +86,7 @@ $("signin").addEventListener("submit",e=>{
       await showIdentity();
       throw Error("This account is not authorized as an administrator.");
     }else{
+      await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
   })();
@@ -122,7 +124,20 @@ bind("completePasswordReset",async()=>{
 });
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
-function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
+function bind(id,fn){
+  const el=$(id);if(!el)return;
+  el.onclick=safe(async()=>{
+    if(el.dataset.kcWorking==="true")return;
+    const label=el.textContent,wasDisabled=el.disabled;
+    el.dataset.kcWorking="true";el.setAttribute("aria-busy","true");el.textContent="Working…";
+    if(id!=="updateStatus")el.disabled=true;
+    try{await fn()}finally{
+      el.textContent=label;el.removeAttribute("aria-busy");delete el.dataset.kcWorking;
+      // Update-order can become permanently disabled after its final status.
+      if(id!=="updateStatus")el.disabled=wasDisabled;
+    }
+  });
+}
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
@@ -285,6 +300,7 @@ bind("updateStatus",async()=>{
     const verified=await api("/api/orders/"+encodeURIComponent(id));
     if(verified.order?.status!==status)throw Error("The API did not confirm the status change. Refresh orders before retrying.");
     await loadOwnerOrders(false);
+    await pollNotifications(true);
     out("Status saved: "+verified.order.order_number+" — "+status.replaceAll("_"," ")+". Customer tracking will reflect this saved status.");
   }finally{
     updateOwnerOrderSelection();
@@ -323,10 +339,87 @@ bind("approve",async()=>{const id=required("applicationId","Application");if(!wi
 bind("reject",async()=>{const id=required("applicationId","Application");if(!window.confirm("Reject this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"rejected"});await loadApplications();out("Shop application rejected. Refresh dashboard totals to see updated counts.");});
 bind("orders",async()=>out(await api("/api/admin/orders")));
 }
-bind("notifications",async()=>out(await api("/api/notifications")));
-bind("markRead",async()=>{const id=required("notificationId","Notification ID");if(!orderIdPattern.test(id))throw Error("Enter a valid notification ID.");await api("/api/notifications/"+encodeURIComponent(id)+"/read","PATCH");await pollNotifications();out("Notification marked as read.");});
-async function pollNotifications(){if(document.visibilityState!=="visible"||(role==="owner"||role==="admin")&&!dashboardAccess)return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
-showIdentity().then(async()=>{if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="customer")await refreshCustomerTracking(false);await pollNotifications()}).catch(()=>{});
-setInterval(pollNotifications,20000);
-setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},15000);
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications();if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
+// The server returns only this signed-in user's most recent notifications (read and unread).
+// Render them inside Notifications rather than dumping JSON into the Activity panel.
+const readableNotificationDate=value=>{
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Date unavailable":date.toLocaleString("en-ZA",{dateStyle:"medium",timeStyle:"short"});
+};
+function readableNotificationBody(n){
+  const body=String(n.body||"").trim();
+  if(n.kind==="order_status"&&/^[a-z_]+$/.test(body))return "Order status: "+body.replaceAll("_"," ");
+  if(n.kind==="application_status"&&/^(approved|rejected|pending)$/.test(body))return "Your shop application was "+body+".";
+  return body||"No further details.";
+}
+function renderNotifications(notifications){
+  const list=$("notificationList");if(!list)return;
+  list.replaceChildren();
+  if(!notifications.length){
+    const empty=document.createElement("p");empty.textContent="No notifications yet. New orders and account updates will appear here.";
+    list.append(empty);return;
+  }
+  for(const notification of notifications){
+    const card=document.createElement("article");card.className="notification-card";
+    card.dataset.unread=String(!notification.read_at);card.setAttribute("role","listitem");
+    const title=document.createElement("h3");title.textContent=String(notification.title||"Kota Connect notification");
+    const body=document.createElement("p");body.className="notification-body";body.textContent=readableNotificationBody(notification);
+    const meta=document.createElement("p");meta.className="notification-meta";
+    meta.textContent=[notification.order_number?"Order "+notification.order_number:null,notification.shop_name||null,readableNotificationDate(notification.created_at)].filter(Boolean).join(" · ");
+    const state=document.createElement("p");state.className="notification-status";
+    state.textContent=notification.read_at?"Read":"Unread";
+    card.append(title,body,meta,state);
+    if(!notification.read_at){
+      const button=document.createElement("button");button.type="button";button.textContent="Mark as read";
+      button.setAttribute("aria-label","Mark "+title.textContent+" as read");
+      button.onclick=safe(async()=>{
+        if(button.disabled)return;
+        button.disabled=true;button.textContent="Saving…";
+        try{await markNotificationRead(notification.id)}finally{button.disabled=false;button.textContent="Mark as read"}
+      });
+      card.append(button);
+    }
+    list.append(card);
+  }
+}
+let notificationRequest=null;
+async function pollNotifications(force=false){
+  if(role==="customer"||!dashboardAccess||!force&&document.visibilityState!=="visible")return [];
+  if(notificationRequest){try{await notificationRequest}catch{}if(!force)return []}
+  const task=(async()=>{
+    try{
+      const response=await api("/api/notifications");
+      if(!dashboardAccess)return [];
+      const notifications=Array.isArray(response.notifications)?response.notifications:[];
+      renderNotifications(notifications);
+      const unread=notifications.filter(n=>!n.read_at).length;
+      $("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
+      return notifications;
+    }catch(error){
+      if(dashboardAccess)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
+      if(force)throw error;
+      return [];
+    }
+  })();
+  notificationRequest=task;
+  try{return await task}finally{if(notificationRequest===task)notificationRequest=null}
+}
+async function markNotificationRead(id){
+  if(!orderIdPattern.test(id))throw Error("Choose a valid notification.");
+  await api("/api/notifications/"+encodeURIComponent(id)+"/read","PATCH");
+  await pollNotifications(true);
+  out("Notification marked as read.");
+}
+bind("notifications",async()=>{
+  const items=await pollNotifications(true);
+  out("Notifications updated. "+items.length+" message"+(items.length===1?"":"s")+" shown in Notifications.");
+});
+bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
+showIdentity().then(async()=>{
+  if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
+  if(role==="customer")await refreshCustomerTracking(false);
+  await pollNotifications(true);
+}).catch(()=>{});
+setInterval(()=>pollNotifications(false).catch(()=>{}),10000);
+setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},10000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications(true).catch(()=>{});if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
+window.addEventListener("focus",()=>{pollNotifications(true).catch(()=>{})});
