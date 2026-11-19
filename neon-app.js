@@ -5,15 +5,27 @@ const $=id=>document.getElementById(id), role=document.body.dataset.role;
 const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
 let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
+const guestStorageKey="kota_connect_guest_checkout_v1";
+function guestToken(){
+  let token;
+  try { token=localStorage.getItem(guestStorageKey); } catch { throw Error("Browser storage must be enabled to track guest orders"); }
+  if(!/^[a-f0-9]{64}$/.test(token||"")){
+    const secret=crypto.getRandomValues(new Uint8Array(32));
+    token=Array.from(secret,value=>value.toString(16).padStart(2,"0")).join("");
+    try { localStorage.setItem(guestStorageKey,token); } catch { throw Error("Browser storage must be enabled to track guest orders"); }
+  }
+  return token;
+}
 function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+(e?.message||"Request failed. Please try again."))}};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 async function verifyAdminAccess(){if(role!=="admin")return;try{await api("/api/admin/orders");out("Signed in. Administrator access verified.")}catch(e){out("Signed in, but administrator access could not be verified: "+e.message+". Your account must be assigned the administrator role in Neon.")}}
-async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){const r=await auth.token();if(r.error)throw Error(r.error.message);if(!r.data?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.token;}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
+async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){if(role==="customer"){headers.authorization="Guest "+guestToken()}else{const r=await auth.token();if(r.error)throw Error(r.error.message);if(!r.data?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.token;}}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
   showDashboardPanels(false);
+  if(role==="customer"){showDashboardPanels(true);$("identity").textContent="No customer account needed. Keep this browser to track your orders.";return}
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
   if(!r.data?.user){$("identity").textContent="Not signed in";return}
@@ -28,12 +40,14 @@ async function showIdentity(){
     throw e;
   }
 }
+if(role!=="customer"){
 $("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="owner"&&!dashboardAccess)throw Error("Administrator accounts cannot sign in as shop owners. Sign out and use another owner account.");if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
 bind("sendVerification",async()=>{const email=required("email","Email");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{const email=required("email","Email"),otp=required("verificationCode","Verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);out("Email verified. You can sign in with your password. Use Reset password only if you need to change it.")});
 bind("forgotPassword",async()=>{const email=required("email","Email");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a password reset email has been sent. Check your inbox and spam folder. The link expires after one hour.")});
 $("signup").onclick=safe(async()=>{const email=required("email","Email");required("password","Password");const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out(role==="admin"?"Account created. Administrator access requires an existing administrator to assign your account the admin role.":role==="owner"?"Account created. Send a verification code and verify your email before signing in or applying for a shop.":"Account created")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
+}
 function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
