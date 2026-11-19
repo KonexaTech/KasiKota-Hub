@@ -8,24 +8,27 @@ let dashboardAccess=false;
 function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
+function isSignedJwt(value){
+  return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+}
 async function apiJwt(){
-  let token=null;
-  if(typeof auth.getJWTToken==="function"){
-    try{token=await auth.getJWTToken()}catch{} // The public client may instead expose token().
-  }
-  if(!token){
-    const r=await auth.token();
-    if(r.error)throw Error(r.error.message);
-    token=r.data?.token;
-  }
-  // Only a signed JWT is valid for the Worker. Never send a session-cookie ID.
-  if(typeof token!=="string"||token.split(".").length!==3){
-    const session=await auth.getSession();
-    if(session.error)throw Error(session.error.message);
-    if(!session.data?.user)throw Error("Sign in to continue");
-    throw Error("Neon did not issue an API access token. Verify your email, sign out, then sign in again.");
-  }
-  return token;
+  // Neon Managed Auth uses a session cookie; its session.token is NOT the API JWT.
+  // The official Neon JWT plugin exposes the token() method and a set-auth-jwt header.
+  let tokenError=null;
+  try{
+    const result=await auth.token();
+    if(isSignedJwt(result?.data?.token))return result.data.token;
+    if(result?.error)tokenError=result.error.message;
+  }catch(e){tokenError=e?.message||"Token endpoint unavailable";}
+  let headerToken=null;
+  const session=await auth.getSession({fetchOptions:{onSuccess(ctx){
+    headerToken=ctx.response.headers.get("set-auth-jwt");
+  }}});
+  if(session.error)throw Error(session.error.message);
+  if(isSignedJwt(headerToken))return headerToken;
+  if(!session.data?.user)throw Error("Sign in to continue");
+  // Do not accept a session ID, fabricate a JWT, or relax API permissions.
+  throw Error("Signed in, but the Neon JWT token could not be retrieved"+(tokenError?": "+tokenError:"")+". Check browser cookie settings or try a fresh sign-in.");
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
