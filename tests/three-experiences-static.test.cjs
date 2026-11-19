@@ -38,7 +38,7 @@ test("customer dashboard buttons link to existing, role-gated owner and admin pa
 });
 
 test("shop registration opens as a modal from customer navigation",()=>{
-  assert.match(customer,/href="\.\/neon-owner\.html#registerShop">Register your shop<\/a>/);
+  assert.match(customer,/href="#registerShop" id="openShopRegistration">Register your shop<\/a>/);
   assert.match(customer,/<dialog id="registerShop"/);
   assert.match(customer,/id="shopRegistrationForm"/);
   assert.match(customer,/id="regOwnerName"/);
@@ -64,7 +64,7 @@ test("shop registration is located on the customer page, not the owner dashboard
   const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
   assert.match(customer,/id="openShopRegistration"/);
   assert.match(customer,/src="\.\/kota-shop-registration\.mjs"/);
-  assert.match(registration,/POST.*\/api\/shop-applications/s);
+  assert.match(registration,/fetch\("https:\/\/kota-connect-api-dev\.siboniisozulu\.workers\.dev\/api\/shop-applications",\{method:"POST"/);
   assert.match(registration,/await auth\.signOut\(\)/);
   assert.doesNotMatch(owner,/id="shopRegistrationForm"|id="registerShop"/);
 });
