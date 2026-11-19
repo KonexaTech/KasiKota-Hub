@@ -47,3 +47,14 @@ a{color:var(--kc-green)}
 #steps li.done:before{background:var(--kc-green);border-color:var(--kc-green)}
 @media(min-width:760px){body:has(#orderForm) main{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}body:has(#orderForm) #welcome{grid-column:1/-1}body:has(#orderForm) #shops{grid-column:1/-1}body:has(#orderForm) #order{grid-column:1/-1}}
 @media(max-width:640px){nav{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap}nav a{white-space:nowrap}main,.wrap{width:calc(100% - 22px)!important;margin:14px auto!important}.row{grid-template-columns:1fr!important}.statgrid{grid-template-columns:1fr!important}header{text-align:left!important}}
+
+/* Readable owner/admin notifications; uses the existing green palette. */
+.notification-list{display:grid;gap:11px;margin:14px 0}
+.notification-card{border:1px solid var(--kc-line);border-radius:13px;padding:14px;background:#fff;overflow-wrap:anywhere}
+.notification-card[data-unread="true"]{background:#f3faf4;border-color:#b4dbc0}
+.notification-card h3{font-size:1rem!important;margin:0 0 7px}
+.notification-card p{margin:7px 0}
+.notification-card .notification-meta{font-size:.82rem;color:var(--kc-muted);font-weight:550}
+.notification-card .notification-status{font-size:.82rem;font-weight:800;color:var(--kc-green)}
+.notification-card button{margin:8px 0 0;font-size:.88rem}
+.notification-card .notification-body{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--kc-ink)}
