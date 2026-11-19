@@ -14,7 +14,7 @@ const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.
 const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id),say=value=>$("notice").textContent=typeof value==="string"?value:JSON.stringify(value,null,2);
 async function session(){const r=await auth.getSession();if(r.error)throw Error(r.error.message);return r.data}
-async function token(){const s=await session();if(!s?.session?.token)throw Error("Sign in first");return s.session.token}
+async function token(){const r=await auth.token();if(r.error)throw Error(r.error.message);if(!r.data?.token)throw Error("Sign in first");return r.data.token}
 async function api(path,method="GET",body){const base=$("worker").value.trim().replace(/\/$/,"");if(!/^https:\/\//.test(base))throw Error("Enter a secure staging Worker URL");const headers={"content-type":"application/json"};if(method!=="PUBLIC")headers.authorization="Bearer "+await token();const response=await fetch(base+path,{method:method==="PUBLIC"?"GET":method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"HTTP "+response.status);return data}
 function click(id,action){$(id).addEventListener("click",async()=>{try{say(await action())}catch(e){say("Error: "+e.message)}})}
 async function identity(){const s=await session();$("identity").textContent=s?.user?.email||"Not signed in"}
