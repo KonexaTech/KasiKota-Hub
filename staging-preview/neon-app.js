@@ -1,32 +1,34 @@
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
-const auth=createAuthClient(AUTH_URL,{fetchOptions:{credentials:"include"}});
+const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
 const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
 let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
-const safe=(fn)=>async()=>{try{await fn(function isSignedJwt(token){
-  return typeof token==="string" && token.split(".").length===3 &&
-    token.split(".").every(part=>/^[A-Za-z0-9_-]+$/.test(part));
+const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
+function isSignedJwt(value){
+  return typeof value==="string" && /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  // Managed Neon Auth supplies the signed JWT on getSession(); its cookie/session id is not a JWT.
-  const session=await auth.getSession();
+  // Neon Managed Auth uses a session cookie; its session.token is NOT the API JWT.
+  // The official Neon JWT plugin exposes the token() method and a set-auth-jwt header.
+  let tokenError=null;
+  try{
+    const result=await auth.token();
+    if(isSignedJwt(result?.data?.token))return result.data.token;
+    if(result?.error)tokenError=result.error.message;
+  }catch(e){tokenError=e?.message||"Token endpoint unavailable";}
+  let headerToken=null;
+  const session=await auth.getSession({fetchOptions:{onSuccess(ctx){
+    headerToken=ctx.response.headers.get("set-auth-jwt");
+  }}});
   if(session.error)throw Error(session.error.message);
+  if(isSignedJwt(headerToken))return headerToken;
   if(!session.data?.user)throw Error("Sign in to continue");
-  const accessToken=session.data?.session?.access_token;
-  const sessionJwt=session.data?.session?.token;
-  if(isSignedJwt(accessToken))return accessToken;
-  if(isSignedJwt(sessionJwt))return sessionJwt;
-  // Compatibility with the Better Auth JWT plugin on older Neon client versions.
-  if(typeof auth.token==="function"){
-    const r=await auth.token();
-    if(r.error)throw Error(r.error.message);
-    if(isSignedJwt(r.data?.token))return r.data.token;
-  }
-  throw Error("Sign-in succeeded, but Neon Auth did not return a signed API token. Sign out, refresh the page, and sign in again.");
+  // Do not accept a session ID, fabricate a JWT, or relax API permissions.
+  throw Error("Signed in, but the Neon JWT token could not be retrieved"+(tokenError?": "+tokenError:"")+". Check browser cookie settings or try a fresh sign-in.");
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
