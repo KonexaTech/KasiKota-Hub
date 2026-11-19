@@ -18,25 +18,31 @@ const out=(message)=>{$("result").textContent=typeof message==="string"?message:
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
 function isSignedJwt(value){
-  return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+  return typeof value==="string" && /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  let headerToken="";
-  let session;
+  const tokenUrl=(AUTH_URL.endsWith("/")?AUTH_URL.slice(0,-1):AUTH_URL)+"/token";
+  let response;
   try{
-    session=await auth.getSession({fetchOptions:{onSuccess(context){
-      // Keep the JWT response header local to this request, not in global state.
-      headerToken=context.response.headers.get("set-auth-jwt")||"";
-    }}});
-  }catch(error){
-    throw Error("Neon Auth session request failed: "+(error?.message||"unknown error"));
+    response=await fetch(tokenUrl,{
+      method:"GET",
+      credentials:"include",
+      cache:"no-store",
+      headers:{accept:"application/json"}
+    });
+  }catch{
+    throw Error("Neon JWT endpoint could not be reached");
   }
-  if(session?.error)throw Error(session.error.message||"Neon Auth session request failed");
-  if(!session?.data?.user||!session?.data?.session)throw Error("No active Neon Auth session. Please sign in again.");
-  const token=session.data.session.token;
-  if(isSignedJwt(token))return token;
-  if(isSignedJwt(headerToken))return headerToken;
-  throw Error("Neon Auth session is active but did not include a signed JWT. Session token type: "+typeof token+"; session keys: "+Object.keys(session.data.session).join(", ")+".");
+  let result;
+  try{result=await response.json()}catch{
+    throw Error("Neon JWT endpoint returned an invalid response (HTTP "+response.status+")");
+  }
+  const token=result?.token??result?.data?.token;
+  if(response.ok&&isSignedJwt(token))return token;
+  const state=!response.ok?"HTTP "+response.status:"HTTP "+response.status+" without a signed JWT";
+  const reason=typeof result?.error?.message==="string"?result.error.message:
+    typeof result?.message==="string"?result.message:null;
+  throw Error("Neon JWT endpoint failed ("+state+")"+(reason?": "+reason:""));
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
@@ -44,20 +50,70 @@ async function showIdentity(){
   showDashboardPanels(false);
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
-  if(!r.data?.user){$("identity").textContent="Not signed in";return}
-  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
+  if(!r.data?.user){
+    $("identity").textContent="Not signed in";
+    return {allowed:false,user:null,me:null,ownerAccess:null};
+  }
+  if(role!=="owner"&&role!=="admin"){
+    showDashboardPanels(true);
+    $("identity").textContent=r.data.user.email;
+    return {allowed:true,user:r.data.user,me:null,ownerAccess:null};
+  }
   try{
     const me=await api("/api/me");
     const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
     const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
-    $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
+    if(role==="owner"&&!allowed){
+      if(me.admin){
+        $("identity").textContent="Owner access denied: administrator accounts cannot access the shop dashboard.";
+      }else if(ownerAccess?.applicationStatus==="pending"){
+        $("identity").textContent="Your shop application is awaiting administrator approval. Dashboard access is locked.";
+      }else if(ownerAccess?.applicationStatus==="rejected"){
+        $("identity").textContent="Your shop application was rejected. Please contact the administrator.";
+      }else{
+        $("identity").textContent="No approved shop is linked to this account. Register your shop before using the owner dashboard.";
+      }
+    }else{
+      $("identity").textContent=allowed?r.data.user.email:"Administrator access denied: this account is not an approved administrator.";
+    }
+    return {allowed,me,ownerAccess,user:r.data.user};
   }catch(e){
     $("identity").textContent="Unable to verify "+role+" access.";
+    out("Unable to verify "+role+" access: "+(e?.message||"unknown error"));
     throw e;
   }
 }
-$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");// Existing owners sign in directly; shop applications are submitted only by the registration flow.await showIdentity();if(role==="owner"&&dashboardAccess){await loadOwnerOrders(false);out("Signed in. Your shop is approved.");}else if(role==="owner"){await auth.signOut();await showIdentity();out("Your email is verified and your shop application has been submitted. You can sign in to the owner dashboard after the administrator approves your shop.");}else if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");else out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
+$("signin").addEventListener("submit",e=>{
+  e.preventDefault();
+  safe(async()=>{
+    const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
+    if(r.error)throw Error(r.error.message);
+    if(!r.data)throw Error("Sign-in did not return an account");
+    // Existing owners sign in directly; applications are submitted only by the customer registration flow.
+    const access=await showIdentity();
+    if(role==="owner"&&dashboardAccess){
+      await loadOwnerOrders(false);
+      out("Signed in. Your shop is approved.");
+    }else if(role==="owner"){
+      const admin=access?.me?.admin===true;
+      const status=access?.ownerAccess?.applicationStatus;
+      await auth.signOut();
+      await showIdentity();
+      out(admin
+        ?"Administrator accounts cannot access the shop dashboard. Sign in using a separate owner account."
+        :status==="pending"
+          ?"Your shop application is awaiting administrator approval. You can sign in to the owner dashboard after approval."
+          :status==="rejected"
+            ?"Your shop application was rejected. Please contact the administrator."
+            :"No approved shop is linked to this account. Register your shop before using the owner dashboard.");
+    }else if(role==="admin"&&!dashboardAccess){
+      throw Error("This account is not authorized as an administrator.");
+    }else{
+      out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
+    }
+  })();
+});
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);$("registrationStatus")&&($("registrationStatus").textContent="Email verified. You can now sign in above. Your shop application will be submitted after successful sign-in.");out("Email verified. You can now sign in with your password.")});
 bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
@@ -112,15 +168,6 @@ async function viewOwnerMenu(){
   out("Loaded "+items.filter(item=>item.available).length+" available menu items. Edit the text and press Save menu and prices.");
 }
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
-bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
-async function submitPendingShopApplication(){
- const raw=localStorage.getItem("kc_pending_shop_application");if(!raw)return;
- const pending=JSON.parse(raw);if(pending.email.toLowerCase()!==String((await auth.getSession()).data?.user?.email||"").toLowerCase())return;
- const response=await api("/api/shop-applications","POST",pending.application);
- localStorage.removeItem("kc_pending_shop_application");
- out("Shop application submitted successfully. Application status: "+response.application.status+". You can manage your application from the dashboard.");
-}
-
 bind("applications",async()=>out(await api("/api/shop-applications/mine")));
 let editableShops=[];
 function showEditableShop(){
