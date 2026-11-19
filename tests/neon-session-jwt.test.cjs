@@ -54,9 +54,9 @@ test("whole app parses and keeps administrator and owner authorization server-en
 
 test("owner sign-in form invokes its asynchronous submit handler",()=>{
  const start=app.indexOf('$("signin").addEventListener("submit"');
- const end=app.indexOf('\\nbind("sendVerification"',start);
+ const end=app.indexOf('\nbind("sendVerification"',start);
  assert.ok(start>=0&&end>start,"sign-in handler must exist");
  const handler=app.slice(start,end);
- assert.match(handler,/safe\\(async\\(\\)=>\\{/);
- assert.match(handler,/\\}\\)\\(\\);\\s*\\}\\);$/);
+ assert.match(handler,/safe\(async\(\)=>\{/);
+ assert.match(handler,/\}\)\(\);\s*\}\);$/);
 });
