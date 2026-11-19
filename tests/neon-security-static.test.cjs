@@ -4,7 +4,7 @@ const auth=fs.readFileSync("worker/src/neon-auth.js","utf8");
 const worker=fs.readFileSync("worker/src/index.js","utf8");
 const page=fs.readFileSync("neon-staging.html","utf8");
 test("Worker routes only to Neon and fails closed without Neon-only mode",()=>{assert.match(worker,/NEON_ONLY_MODE !== "true"/);assert.match(worker,/await neonApi\(request, env, withDb\)/);assert.doesNotMatch(worker,/privilegedRoute|verifiedFirebaseUser|FIREBASE_PROJECT_ID|ADMIN_UID/)});
-test("Neon Auth validates signed tokens and fixed issuer/audience",()=>{assert.match(auth,/jwtVerify\(/);assert.match(auth,/algorithms: \["EdDSA"\]/);assert.match(auth,/issuer, audience: issuer/);assert.match(auth,/createRemoteJWKSet/)});
+test("Neon Auth validates signed tokens with configured JWKS and issuer",()=>{assert.match(auth,/jwtVerify\(/);assert.match(auth,/algorithms: \["EdDSA"\]/);assert.match(auth,/NEON_AUTH_JWKS_URL/);assert.match(auth,/issuer\s*\}/);assert.doesNotMatch(auth,/audience:\s*issuer/);assert.match(auth,/createRemoteJWKSet/)});
 test("Admin role comes from database, not browser request",()=>{assert.match(auth,/FROM kc_admins WHERE subject=\$1/);assert.match(api,/isNeonAdmin\(/)});
 test("Order prices are calculated using Neon menu rows",()=>{assert.match(api,/SELECT id,name,price_cents FROM kc_menu_items/);assert.match(api,/subtotal\+=prices\.get\(item\.itemId\)\.price_cents\*item\.quantity/)});
 test("Order status updates require shop ownership and lock row",()=>{assert.match(api,/s\.owner_subject=\$2 FOR UPDATE OF o/);assert.match(api,/Invalid status transition/)});
