@@ -93,20 +93,11 @@ bind("verifyEmail",async()=>{
   if(!email||!otp)throw Error("Enter your email and verification code");
   const r=await auth.emailOtp.verifyEmail({email,otp});
   if(r.error)throw Error(r.error.message);
+  await auth.signOut();
   await showIdentity();
-  const current=await auth.getSession();
-  if(current.data?.user?.emailVerified===false)throw Error("Email verification has not been confirmed. Check the code and try again.");
-  if(role==="owner"&&!dashboardAccess){
-    await auth.signOut();
-    await showIdentity();
-    out("Email verified. Your shop application is awaiting administrator approval. You can sign in after approval.");
-    return;
-  }
-  if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
-  $("registrationStatus")&&($("registrationStatus").textContent="Email verified. Your account is ready for the next approved step.");
-  out(dashboardAccess?"Email verified. Dashboard access confirmed.":"Email verified. You can now sign in with your password.");
+  $("registrationStatus")&&($("registrationStatus").textContent="Email verified. Sign in with your password. Owner dashboard access still requires administrator approval.");
+  out("Email verified. Please sign in with your password. Owner access remains subject to administrator approval.");
 });
-bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
 function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
