@@ -5,49 +5,38 @@ const vm=require("node:vm");
 const app=fs.readFileSync("staging-preview/neon-app.js","utf8");
 const first=app.indexOf("function isSignedJwt(value){");
 const last=app.indexOf("\nasync function api(path,",first);
-assert.ok(first>=0&&last>first,"JWT helper must be present");
+assert.ok(first>=0&&last>first);
 const helper=app.slice(first,last);
-function create({tokenResult,sessionResult,headerToken="",tokenThrows=false,sessionThrows=false}){
-  const calls=[];
-  const auth={
-    token:async()=>{calls.push("token");if(tokenThrows)throw Error("token transport failure");return tokenResult},
-    getSession:async(options)=>{calls.push("getSession");if(sessionThrows)throw Error("session transport failure");options?.fetchOptions?.onSuccess?.({response:{headers:{get:(key)=>key==="set-auth-jwt"?headerToken:null}}});return sessionResult}
-  };
-  const context={auth};
-  vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
-  return {request:context.apiJwt,calls};
+function create({sessionResult,headerToken="",throws=false}){
+ const auth={getSession:async(options)=>{if(throws)throw Error("session transport failure");options?.fetchOptions?.onSuccess?.({response:{headers:{get:k=>k==="set-auth-jwt"?headerToken:null}}});return sessionResult}};
+ const window={};const context={auth,window};
+ vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
+ return context.apiJwt;
 }
-test("Managed Auth token endpoint returns signed JWT",async()=>{
-  const x=create({tokenResult:{data:{token:"head.payload.signature"}},sessionResult:{data:{user:{id:"u"}}}});
-  assert.equal(await x.request(),"head.payload.signature");
-  assert.deepEqual(x.calls,["token"]);
+test("uses signed JWT exposed as data.session.token",async()=>{
+ const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"head.payload.signature"}}}});
+ assert.equal(await request(),"head.payload.signature");
 });
-test("falls back to signed set-auth-jwt header when token endpoint has no JWT",async()=>{
-  const x=create({tokenResult:{data:{}},sessionResult:{data:{user:{id:"u"}}},headerToken:"head.payload.signature"});
-  assert.equal(await x.request(),"head.payload.signature");
-  assert.deepEqual(x.calls,["token","getSession"]);
+test("falls back to set-auth-jwt response header",async()=>{
+ const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"opaque"}}},headerToken:"head.payload.signature"});
+ assert.equal(await request(),"head.payload.signature");
 });
-test("does not use opaque session identifiers as API JWTs",async()=>{
-  const x=create({tokenResult:{data:{token:"opaque-session"}},sessionResult:{data:{user:{id:"u",session:{token:"opaque-session"}}}}});
-  await assert.rejects(x.request(),/Session JWT header: JWT response header missing/);
+test("does not send an opaque session token to API",async()=>{
+ const request=create({sessionResult:{data:{user:{id:"u"},session:{token:"opaque"}}}});
+ await assert.rejects(request(),/did not include a signed JWT/);
 });
-test("reports token endpoint errors and attempts session header fallback",async()=>{
-  const x=create({tokenResult:{error:{message:"JWT endpoint disabled"}},sessionResult:{data:{user:{id:"u"}}}});
-  await assert.rejects(x.request(),/JWT endpoint disabled.*JWT response header missing/);
+test("requires an active session",async()=>{
+ const request=create({sessionResult:{data:null}});
+ await assert.rejects(request(),/No active Neon Auth session/);
 });
-test("requires an active session when header fallback has no JWT",async()=>{
-  const x=create({tokenResult:{data:{}},sessionResult:{data:null}});
-  await assert.rejects(x.request(),/no active signed-in session/);
+test("surfaces auth and transport errors",async()=>{
+ await assert.rejects(create({sessionResult:{error:{message:"expired"}}})(),/expired/);
+ await assert.rejects(create({throws:true})(),/session transport failure/);
 });
-test("transport errors are distinguishable",async()=>{
-  const x=create({tokenThrows:true,sessionThrows:true});
-  await assert.rejects(x.request(),/token transport failure.*session transport failure/);
-});
-test("whole app parses and admin/owner access remains server-authorized",()=>{
-  const script=app.replace(/^import\s+\{[^}]+\}\s+from\s+"[^"]+";\s*/gm,"");
-  assert.doesNotThrow(()=>new vm.Script(script));
-  assert.match(app,/await auth\.token\(\)/);
-  assert.match(app,/set-auth-jwt/);
-  assert.match(app,/me\.admin===false/);
-  assert.match(app,/me\.admin===true/);
+test("whole app parses and keeps admin/owner authorization on server",()=>{
+ const script=app.replace(/^import\s+\{[^}]+\}\s+from\s+"[^"]+";\s*/gm,"");
+ assert.doesNotThrow(()=>new vm.Script(script));
+ assert.match(app,/session\.data\.session\.token/);
+ assert.match(app,/me\.admin===false/);
+ assert.match(app,/me\.admin===true/);
 });
