@@ -20,30 +20,23 @@ function isSignedJwt(value){
   return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  // Prefer Managed Auth's token endpoint. Some Managed Auth responses also
-  // expose the same signed JWT on get-session as set-auth-jwt.
-  let tokenError="no token returned";
+  let session;
   try{
-    const result=await auth.token();
-    if(result?.error)tokenError=result.error.message||"token endpoint returned an error";
-    else if(isSignedJwt(result?.data?.token))return result.data.token;
-    else tokenError="token endpoint response did not contain a signed JWT";
-  }catch(error){
-    tokenError=error?.message||"token endpoint request failed";
-  }
-  let sessionError="JWT response header missing";
-  try{
-    let headerToken="";
-    const session=await auth.getSession({fetchOptions:{onSuccess(context){
-      headerToken=context.response.headers.get("set-auth-jwt")||"";
+    session=await auth.getSession({fetchOptions:{onSuccess(context){
+      // Keep the response header as a fallback; the SDK also exposes the
+      // Managed Auth JWT as data.session.token.
+      window.__kotaAuthJwtHeader=context.response.headers.get("set-auth-jwt")||"";
     }}});
-    if(session?.error)sessionError=session.error.message||"session request failed";
-    else if(isSignedJwt(headerToken))return headerToken;
-    else if(!session?.data?.user)sessionError="no active signed-in session";
   }catch(error){
-    sessionError=error?.message||"session request failed";
+    throw Error("Neon Auth session request failed: "+(error?.message||"unknown error"));
   }
-  throw Error("Neon Auth did not issue a signed API JWT. Token endpoint: "+tokenError+". Session JWT header: "+sessionError+".");
+  if(session?.error)throw Error(session.error.message||"Neon Auth session request failed");
+  if(!session?.data?.user||!session?.data?.session)throw Error("No active Neon Auth session. Please sign in again.");
+  const token=session.data.session.token;
+  if(isSignedJwt(token))return token;
+  const headerToken=window.__kotaAuthJwtHeader||"";
+  if(isSignedJwt(headerToken))return headerToken;
+  throw Error("Neon Auth session is active but did not include a signed JWT. Session token type: "+typeof token+"; session keys: "+Object.keys(session.data.session).join(", ")+".");
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
