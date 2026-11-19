@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#176b45"><title>Kota Connect | Order a Kota</title><link rel="stylesheet" href="./kota-customer.css"></head>
-<body data-role="customer"><header><div class="brand">KOTA <span>CONNECT</span></div><small>Newcastle's kota shops, in one place</small><nav class="dash-nav" aria-label="Shop and dashboard links"><a class="dashboard-link register-link" href="./neon-owner.html#registerShop">Register your shop</a><a class="dashboard-link owner-link" href="./neon-owner.html">Shop Owner Dashboard</a><a class="dashboard-link admin-link" href="./neon-admin.html">Admin Dashboard</a></nav></header>
+<body data-role="customer"><header><div class="brand">KOTA <span>CONNECT</span></div><small>Newcastle's kota shops, in one place</small><nav class="dash-nav" aria-label="Shop and dashboard links"><a class="dashboard-link register-link" href="#registerShop" id="openShopRegistration">Register your shop</a><a class="dashboard-link owner-link" href="./neon-owner.html">Shop Owner Dashboard</a><a class="dashboard-link admin-link" href="./neon-admin.html">Admin Dashboard</a></nav></header>
 <main>
 <section id="welcome" class="hero">
   <span class="eyebrow">WELCOME TO KOTA CONNECT</span>
@@ -33,6 +33,25 @@
   </form>
 </section>
 <section id="trackStep" class="panel" aria-labelledby="trackTitle"><span class="step">STEP 4</span><h2 id="trackTitle">Track your order</h2><p id="successMessage" role="status" aria-live="polite">After confirming an order, you can track it here.</p><label for="orderId">Order reference (saved in this browser)</label><input id="orderId" placeholder="Order ID" autocomplete="off"><button id="track" class="main-button" type="button">Track order</button><p id="trackingStatus" aria-live="polite">No order selected yet.</p><p id="trackingChecked" class="hint">Status refreshes automatically every 10 seconds while this page is open.</p></section>
+<dialog id="registerShop" aria-labelledby="registerTitle" style="max-width:620px;width:calc(100% - 2rem);border:0;border-radius:18px;padding:1.25rem;box-shadow:0 20px 70px #0005">
+<button type="button" id="closeRegistration" style="float:right">Close</button>
+<h2 id="registerTitle">Register your shop</h2>
+<p>Complete your shop details. We will email you a verification code. Your shop must be approved before you can sign in to the owner dashboard.</p>
+<form id="shopRegistrationForm">
+<label>Owner full name<input id="regOwnerName" required maxlength="120" autocomplete="name"></label>
+<label>Shop name<input id="regShopName" required maxlength="160"></label>
+<label>Email address<input id="regEmail" type="email" required maxlength="254" autocomplete="email"></label>
+<label>Phone number<input id="regPhone" type="tel" required maxlength="30" autocomplete="tel"></label>
+<label>Area<select id="regArea" required><option value="">Choose your area</option><option>Newcastle CBD</option><option>Madadeni Section 1</option><option>Madadeni Section 2</option><option>Madadeni Section 3</option><option>Madadeni Section 4</option><option>Madadeni Section 5</option><option>Madadeni Section 6</option><option>Madadeni Section 7</option><option>Osizweni</option><option>Other Newcastle area</option></select></label>
+<label>Shop address<input id="regAddress" required maxlength="300" autocomplete="street-address"></label>
+<label>Shop description<textarea id="regDescription" maxlength="2000" rows="3"></textarea></label>
+<label>Create password<input id="regPassword" type="password" minlength="12" required autocomplete="new-password"></label>
+<label>Confirm password<input id="regPasswordConfirm" type="password" minlength="12" required autocomplete="new-password"></label>
+<button type="submit">Register and send confirmation email</button>
+</form>
+<section id="verifyRegistration" hidden><label>Email confirmation code<input id="regOtp" autocomplete="one-time-code" inputmode="numeric"></label><button id="confirmRegistration" type="button">Verify email and submit application</button></section>
+<p id="registrationStatus" role="status" aria-live="polite">No account will be approved automatically. The administrator reviews every application.</p>
+</dialog>
 <p id="errorMessage" role="alert" hidden></p></main>
 <footer>Shop owner? <a href="https://kota-connect-neon-staging.pages.dev/neon-owner.html">Manage your shop</a> · Kota Connect administrator <a href="https://kota-connect-neon-staging.pages.dev/neon-admin.html">Sign in</a></footer>
-<script type="module" src="./kota-customer.mjs"></script></body></html>
+<script type="module" src="./kota-customer.mjs"></script><script type="module" src="./kota-shop-registration.mjs"></script></body></html>
