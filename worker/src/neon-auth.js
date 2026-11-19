@@ -3,8 +3,8 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 /** Verify Neon Auth access tokens using the configured JWKS and issuer. */
 const jwksCache = new Map();
 export async function verifiedNeonSubject(request, env) {
-  const token = /^Bearer\\s+(\\S+)$/i.exec(request.headers.get("authorization") || "")?.[1];
-  const base = (env.NEON_AUTH_BASE_URL || env.NEON_AUTH_URL || "").replace(/\\/$/, "");
+  const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get("authorization") || "")?.[1];
+  const base = (env.NEON_AUTH_BASE_URL || env.NEON_AUTH_URL || "").replace(/\/$/, "");
   const configuredJwks = env.NEON_AUTH_JWKS_URL || (base ? base + "/.well-known/jwks.json" : "");
   if (!token || !base.startsWith("https://") || !configuredJwks.startsWith("https://")) return null;
   try {
