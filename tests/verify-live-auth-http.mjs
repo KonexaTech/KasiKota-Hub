@@ -18,7 +18,7 @@ for(const path of paths){
  }
 }
 const app=bodies.get("/neon-app.js?v="+version);
-if(!app.includes("Email verification required")||!app.includes("session.data.session.token")||!app.includes("ownerAccess?.approved===true"))throw Error("Deployed owner/admin client is not the audited version");
+if(!app.includes("Email verification required")||!app.includes("ownerAccess?.approved===true")||!app.includes('"/token"')||!app.includes('credentials:"include"')||!app.includes('headers.authorization="Bearer "+await apiJwt()'))throw Error("Deployed owner/admin client is missing the audited verified-role or signed-JWT flow");
 const owner=bodies.get("/neon-owner"),admin=bodies.get("/neon-admin"),customer=bodies.get("/neon-customer");
 if(owner.includes('id="signup"')||admin.includes('id="signup"'))throw Error("Owner/admin dashboards must be login-only");
 if(!customer.includes('id="openShopRegistration"')||!customer.includes('id="registerShop"'))throw Error("Customer shop registration modal is missing");
