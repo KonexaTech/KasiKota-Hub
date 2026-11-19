@@ -10,7 +10,12 @@ export async function neonApi(request,env,withDb){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(!path.startsWith("/api/"))return null;
   if(method==="GET"&&path==="/api/health"){try{const db=await withDb(env,async c=>(await c.query("SELECT 1 AS ok")).rows[0]);return json({ok:db?.ok===1,backend:"neon",authConfigured:Boolean(env.NEON_AUTH_URL||env.NEON_AUTH_BASE_URL)})}catch(e){const code=typeof e?.code==="string"&&/^[A-Z0-9_]{2,12}$/.test(e.code)?e.code:"UNKNOWN";return json({ok:false,backend:"neon",database:"unavailable",errorCode:code,errorType:typeof e?.name==="string"?e.name.slice(0,50):"Unknown",phase: /connect|socket|network|fetch|timeout|tls|ssl/i.test(String(e?.message||""))?"connection":"database",diagnostic: /Database target does not match development branch/i.test(String(e?.message||""))?"wrong_database_target":/Expected development database host not configured/i.test(String(e?.message||""))?"missing_target_guard":/Invalid database connection URL/i.test(String(e?.message||""))?"invalid_database_url":/Database binding not configured/i.test(String(e?.message||""))?"missing_binding":/password authentication failed/i.test(String(e?.message||""))?"authentication":/getaddrinfo|ENOTFOUND|dns/i.test(String(e?.message||""))?"dns":/certificate|tls|ssl/i.test(String(e?.message||""))?"tls":/timeout|ETIMEDOUT/i.test(String(e?.message||""))?"timeout":/connect|socket|network|fetch/i.test(String(e?.message||""))?"network":"unclassified"},503)}}
+ feature/kota-three-experiences-20261119
   // Guest credentials can access customer order routes only.
+
+  // Allow no-account customers only on explicitly listed customer routes.
+  // Owner/admin routes still require a signed Neon JWT.
+ feature/neon-only-cutover
   const subject=(await verifiedNeonSubject(request,env)) ||
     (guestRouteAllowed(method,path)?await verifiedGuestSubject(request):null);
   if(method==="GET"&&path==="/api/shops")return json({shops:(await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone FROM kc_shops WHERE approved=true ORDER BY name LIMIT 100")).rows))});

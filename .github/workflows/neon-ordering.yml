@@ -17,14 +17,23 @@ jobs:
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
           node --check worker/src/neon-auth.js
+ feature/kota-three-experiences-20261119
           node --check worker/src/guest-auth.js
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
           node --test tests/customer-journey.test.mjs
           node --test worker/test/guest-auth.test.mjs
+
+ fix/no-account-guest-checkout-20261119
+          node --check worker/src/guest-auth.js
+          node --test worker/test/guest-auth.test.mjs
+
+ feature/neon-only-cutover
           node --input-type=module --check < staging-preview/neon-app.js
           node --test tests/status-sync.test.cjs
+ feature/neon-only-cutover
           node --check tests/neon-ordering-only.test.cjs
           node tests/neon-ordering-only.test.cjs
+          node tests/customer-price-confirm.test.cjs
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
