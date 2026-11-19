@@ -78,7 +78,7 @@ $("signin").addEventListener("submit",e=>{
     }else{
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  });
+  })();
 });
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);$("registrationStatus")&&($("registrationStatus").textContent="Email verified. You can now sign in above. Your shop application will be submitted after successful sign-in.");out("Email verified. You can now sign in with your password.")});
