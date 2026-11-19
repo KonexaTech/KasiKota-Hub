@@ -10,8 +10,12 @@ export async function neonApi(request,env,withDb){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(!path.startsWith("/api/"))return null;
   if(method==="GET"&&path==="/api/health"){try{const db=await withDb(env,async c=>(await c.query("SELECT 1 AS ok")).rows[0]);return json({ok:db?.ok===1,backend:"neon",authConfigured:Boolean(env.NEON_AUTH_URL||env.NEON_AUTH_BASE_URL)})}catch(e){const code=typeof e?.code==="string"&&/^[A-Z0-9_]{2,12}$/.test(e.code)?e.code:"UNKNOWN";return json({ok:false,backend:"neon",database:"unavailable",errorCode:code,errorType:typeof e?.name==="string"?e.name.slice(0,50):"Unknown",phase: /connect|socket|network|fetch|timeout|tls|ssl/i.test(String(e?.message||""))?"connection":"database",diagnostic: /Database target does not match development branch/i.test(String(e?.message||""))?"wrong_database_target":/Expected development database host not configured/i.test(String(e?.message||""))?"missing_target_guard":/Invalid database connection URL/i.test(String(e?.message||""))?"invalid_database_url":/Database binding not configured/i.test(String(e?.message||""))?"missing_binding":/password authentication failed/i.test(String(e?.message||""))?"authentication":/getaddrinfo|ENOTFOUND|dns/i.test(String(e?.message||""))?"dns":/certificate|tls|ssl/i.test(String(e?.message||""))?"tls":/timeout|ETIMEDOUT/i.test(String(e?.message||""))?"timeout":/connect|socket|network|fetch/i.test(String(e?.message||""))?"network":"unclassified"},503)}}
+ feature/kota-three-experiences-20261119
+  // Guest credentials can access customer order routes only.
+
   // Allow no-account customers only on explicitly listed customer routes.
   // Owner/admin routes still require a signed Neon JWT.
+ feature/neon-only-cutover
   const subject=(await verifiedNeonSubject(request,env)) ||
     (guestRouteAllowed(method,path)?await verifiedGuestSubject(request):null);
   if(method==="GET"&&path==="/api/shops")return json({shops:(await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone FROM kc_shops WHERE approved=true ORDER BY name LIMIT 100")).rows))});
@@ -23,6 +27,18 @@ export async function neonApi(request,env,withDb){
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
   if(method==="GET"&&path==="/api/owner/shops")return json({shops:await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone,approved FROM kc_shops WHERE owner_subject=$1 ORDER BY created_at DESC LIMIT 50",[subject])).rows)});
+  const shopEdit=/^\/api\/owner\/shops\/([0-9a-f-]{36})$/.exec(path);
+  if(method==="PATCH"&&shopEdit&&uuid.test(shopEdit[1])){
+    const d=await readBody(request);
+    if(!d||!["name","area","phone","address"].every(key=>typeof d[key]==="string")||
+      !d.name.trim()||d.name.length>160||!d.area.trim()||d.area.length>160||
+      !d.phone.trim()||d.phone.length>30||d.address.length>300)
+      return json({error:"Invalid shop details"},400);
+    const changed=await withDb(env,async db=>db.query(
+      "UPDATE kc_shops SET name=$3,area=$4,phone=$5,address=$6 WHERE id=$1 AND owner_subject=$2 RETURNING id,name,area,phone,address,approved",
+      [shopEdit[1],subject,d.name.trim(),d.area.trim(),d.phone.trim(),d.address.trim()]));
+    return changed.rowCount?json({shop:changed.rows[0]}):json({error:"Shop not found or not owned"},404);
+  }
   const ownMenu=/^\/api\/owner\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
   if(ownMenu&&uuid.test(ownMenu[1])){
     if(method==="GET")return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents,m.available FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.id=$1 AND s.owner_subject=$2 ORDER BY m.name LIMIT 200",[ownMenu[1],subject])).rows)});
@@ -31,6 +47,18 @@ export async function neonApi(request,env,withDb){
   const ownItem=/^\/api\/owner\/shops\/([0-9a-f-]{36})\/menu\/([0-9a-f-]{36})$/.exec(path);
   if(method==="PATCH"&&ownItem&&uuid.test(ownItem[1])&&uuid.test(ownItem[2])){const d=await readBody(request);if(!d||typeof d.name!=="string"||!d.name.trim()||d.name.length>160||!Number.isInteger(d.priceCents)||d.priceCents<1||d.priceCents>10000000||typeof d.available!=="boolean")return json({error:"Invalid menu update"},400);const result=await withDb(env,async db=>db.query("UPDATE kc_menu_items m SET name=$4,price_cents=$5,available=$6 FROM kc_shops s WHERE m.id=$3 AND m.shop_id=s.id AND s.id=$1 AND s.owner_subject=$2 AND s.approved=true RETURNING m.id,m.name,m.price_cents,m.available",[ownItem[1],subject,ownItem[2],d.name.trim(),d.priceCents,d.available]));return result.rowCount?json({item:result.rows[0]}):json({error:"Menu item not found"},404)}
   if(method==="GET"&&path==="/api/owner/orders")return json({orders:await withDb(env,async db=>(await db.query("SELECT o.id,o.order_number,o.shop_id,o.status,o.customer_name,o.area,o.fulfillment_type,o.total_cents,o.created_at FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id WHERE s.owner_subject=$1 ORDER BY o.created_at DESC LIMIT 100",[subject])).rows)});
+  if(method==="GET"&&path==="/api/admin/overview"){
+    if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);
+    return json(await withDb(env,async db=>{
+      const shops=(await db.query("SELECT id,name,area,address,phone,approved,created_at FROM kc_shops ORDER BY created_at DESC LIMIT 500")).rows;
+      const applications=(await db.query("SELECT status,count(*)::int AS count FROM kc_shop_applications GROUP BY status")).rows;
+      const completed=(await db.query("SELECT count(*)::int AS eligible FROM kc_orders WHERE status='completed' AND test_order=false")).rows[0]?.eligible||0;
+      const totals=(await db.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE approved=true)::int AS approved FROM kc_shops")).rows[0];
+      return {shops,shopCount:totals.total,approvedShopCount:totals.approved,
+        applications,eligibleCompletedOrders:completed,estimatedCommissionCents:completed*50,
+        collectedCommissionCents:null,commissionCollectionStatus:"No verified collection ledger configured"};
+    }));
+  }
   if(method==="GET"&&path==="/api/admin/orders"){if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);return json({orders:await withDb(env,async db=>(await db.query("SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.created_at,o.total_cents FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id ORDER BY o.created_at DESC LIMIT 200")).rows)})}
   if(method==="GET"&&path==="/api/notifications")return json({notifications:await withDb(env,async db=>(await db.query("SELECT id,order_id,kind,title,body,read_at,created_at FROM kc_notifications WHERE recipient_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
   const readNotification=/^\/api\/notifications\/([0-9a-f-]{36})\/read$/.exec(path);
