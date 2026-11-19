@@ -1,6 +1,6 @@
 // Probe public staging routes without storing or printing credentials.
 const base="https://kota-connect-neon-staging.pages.dev";
-for(const path of ["/auth/get-session","/auth/token","/api/health","/neon-app.js?v=20261119-direct-token-v2"]){
+for(const path of ["/auth/get-session","/auth/token","/api/health","/neon-app.js?v=20261119-owner-signin-v10"]){
  const response=await fetch(base+path,{redirect:"manual",signal:AbortSignal.timeout(12000),headers:{accept:"application/json"}});
  const contentType=response.headers.get("content-type")||"";
  const body=await response.text();
