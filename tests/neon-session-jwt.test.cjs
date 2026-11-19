@@ -9,7 +9,7 @@ assert.ok(first>=0&&last>first);
 const helper=app.slice(first,last);
 function create({sessionResult,headerToken="",throws=false}){
  const auth={getSession:async(options)=>{if(throws)throw Error("session transport failure");options?.fetchOptions?.onSuccess?.({response:{headers:{get:k=>k==="set-auth-jwt"?headerToken:null}}});return sessionResult}};
- const window={};const context={auth,window};
+ const context={auth};
  vm.runInNewContext('const AUTH_URL="https://site.pages.dev/auth";'+helper+';globalThis.apiJwt=apiJwt;',context);
  return context.apiJwt;
 }
