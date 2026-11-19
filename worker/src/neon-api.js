@@ -20,6 +20,14 @@ export async function neonApi(request,env,withDb){
   const menu=/^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
   if(method==="GET"&&menu&&uuid.test(menu[1]))return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.approved=true AND m.available=true AND m.shop_id=$1 ORDER BY m.name LIMIT 100",[menu[1]])).rows)});
   if(!subject)return json({error:"Sign in with Neon Auth"},401);
+  if(!subject.startsWith("guest:")){
+    const account=await withDb(env,async db=>(await db.query(
+      'SELECT "emailVerified" AS email_verified, COALESCE(banned,false) AS banned, ("banExpires" IS NULL OR "banExpires" > now()) AS ban_active FROM neon_auth."user" WHERE id=$1',
+      [subject]
+    )).rows[0]);
+    if(!account||account.email_verified!==true)return json({error:"Email verification required. Verify your email before continuing."},403);
+    if(account.banned&&account.ban_active)return json({error:"Account is suspended."},403);
+  }
   // Admin accounts must never act as shop owners, even by calling the API directly.
   if(isOwnerOnlyRoute(path)&&await isNeonAdmin(env,withDb,subject))return json({error:"Administrator accounts cannot use shop-owner functions. Sign in using a separate owner account."},403);
   if(path.startsWith("/api/owner/")&&path!=="/api/owner/access"){
@@ -62,11 +70,10 @@ export async function neonApi(request,env,withDb){
     return json(await withDb(env,async db=>{
       const shops=(await db.query("SELECT id,name,area,address,phone,approved,created_at FROM kc_shops ORDER BY created_at DESC LIMIT 500")).rows;
       const applications=(await db.query("SELECT status,count(*)::int AS count FROM kc_shop_applications GROUP BY status")).rows;
-      const completed=(await db.query("SELECT count(*)::int AS eligible FROM kc_orders WHERE status='completed' AND test_order=false")).rows[0]?.eligible||0;
       const totals=(await db.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE approved=true)::int AS approved FROM kc_shops")).rows[0];
-      return {shops,shopCount:totals.total,approvedShopCount:totals.approved,
-        applications,eligibleCompletedOrders:completed,estimatedCommissionCents:completed*50,
-        collectedCommissionCents:null,commissionCollectionStatus:"No verified collection ledger configured"};
+        return {shops,shopCount:totals.total,approvedShopCount:totals.approved,
+          applications,commissionPaused:true,estimatedCommissionCents:0,
+          collectedCommissionCents:null,commissionCollectionStatus:"Commission is paused for launch. No commission is charged or collected."};
     }));
   }
   if(method==="GET"&&path==="/api/admin/orders"){if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);return json({orders:await withDb(env,async db=>(await db.query("SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.created_at,o.total_cents FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id ORDER BY o.created_at DESC LIMIT 200")).rows)})}
@@ -102,8 +109,9 @@ export async function neonApi(request,env,withDb){
       const prices=new Map(rows.map(x=>[x.id,x]));let subtotal=0;for(const item of data.items)subtotal+=prices.get(item.itemId).price_cents*item.quantity;
       if(!Number.isSafeInteger(subtotal)||subtotal>100000000)throw Error("ITEMS");
       const delivery=data.fulfillmentType==="delivery"?500:0;
+      const testOrder=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev";
       const number="KC-"+crypto.randomUUID().slice(0,12).toUpperCase();
-      const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,data.requestId])).rows[0];
+      const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,test_order,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,testOrder,data.requestId])).rows[0];
       if(!order){const replay=(await db.query("SELECT id,order_number,status,total_cents,shop_id,customer_name,customer_phone,area,delivery_address,fulfillment_type FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(!replay)throw Error("REQUEST_REUSED");const lines=(await db.query("SELECT menu_item_id AS id,quantity FROM kc_order_items WHERE order_id=$1",[replay.id])).rows;const matches=replay.shop_id===data.shopId&&replay.customer_name===data.customerName.trim()&&replay.customer_phone===data.customerPhone.trim()&&replay.area===data.area.trim()&&replay.fulfillment_type===data.fulfillmentType&&(replay.delivery_address||"")===(data.deliveryAddress||"")&&lines.length===data.items.length&&data.items.every(x=>lines.some(y=>y.id===x.itemId&&y.quantity===x.quantity));if(!matches)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:replay,replayed:true}}
       for(const item of data.items){const p=prices.get(item.itemId);await db.query("INSERT INTO kc_order_items(order_id,menu_item_id,item_name,unit_price_cents,quantity) VALUES($1,$2,$3,$4,$5)",[order.id,p.id,p.name,p.price_cents,item.quantity])}
       await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role) VALUES($1,NULL,'pending',$2,'customer')",[order.id,subject]);
