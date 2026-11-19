@@ -31,6 +31,7 @@ jobs:
           node --test tests/customer-journey.test.mjs
           node --test tests/customer-price-confirm.test.cjs
           node --test tests/three-experiences-static.test.cjs
+          node --test tests/dashboard-buttons-audit.test.cjs
           node --test tests/status-sync.test.cjs
           node tests/neon-ordering-only.test.cjs
           node --test tests/neon-session-jwt.test.cjs
