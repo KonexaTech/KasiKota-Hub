@@ -101,6 +101,25 @@ bind("verifyEmail",async()=>{
   $("registrationStatus")&&($("registrationStatus").textContent="Email verified. Sign in with your password. Owner dashboard access still requires administrator approval.");
   out("Email verified. Please sign in with your password. Owner access remains subject to administrator approval.");
 });
+bind("forgotPassword",async()=>{
+  const email=required("email","Email address").toLowerCase();
+  const r=await auth.forgetPassword.emailOtp({email});
+  if(r?.error)throw Error(r.error.message);
+  out("If an account exists for this email, a password reset code has been sent. Enter the code, choose a new password and press Set new password.");
+});
+bind("completePasswordReset",async()=>{
+  const email=required("email","Email address").toLowerCase();
+  const otp=required("verificationCode","Password reset code");
+  const password=required("newPassword","New password");
+  if(password.length<12)throw Error("Your new password must contain at least 12 characters.");
+  const r=await auth.emailOtp.resetPassword({email,otp,password});
+  if(r?.error)throw Error(r.error.message);
+  $("verificationCode").value="";
+  $("newPassword").value="";
+  try{await auth.signOut()}catch{}
+  await showIdentity();
+  out("Password changed successfully. Sign in with your new password.");
+});
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
 function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
@@ -305,7 +324,7 @@ bind("reject",async()=>{const id=required("applicationId","Application");if(!win
 bind("orders",async()=>out(await api("/api/admin/orders")));
 }
 bind("notifications",async()=>out(await api("/api/notifications")));
-bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
+bind("markRead",async()=>{const id=required("notificationId","Notification ID");if(!orderIdPattern.test(id))throw Error("Enter a valid notification ID.");await api("/api/notifications/"+encodeURIComponent(id)+"/read","PATCH");await pollNotifications();out("Notification marked as read.");});
 async function pollNotifications(){if(document.visibilityState!=="visible"||(role==="owner"||role==="admin")&&!dashboardAccess)return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
 showIdentity().then(async()=>{if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="customer")await refreshCustomerTracking(false);await pollNotifications()}).catch(()=>{});
 setInterval(pollNotifications,20000);
