@@ -40,7 +40,7 @@ test("network failures have a distinct message",async()=>{
   await assert.rejects(create(new Error("network")).request(),/could not be reached/);
 });
 test("entire app script parses and still verifies owner/admin via server",()=>{
-  const script=app.replace(/^import \{ createAuthClient \} from "[^"]+";\s*/,"");
+  const script=app.replace(/^import\s+\{[^}]+\}\s+from\s+"[^"]+";\s*/gm,"");
   assert.doesNotThrow(()=>new vm.Script(script));
   assert.match(app,/me\.admin===false/);
   assert.match(app,/me\.admin===true/);
