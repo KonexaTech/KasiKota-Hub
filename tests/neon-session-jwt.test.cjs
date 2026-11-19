@@ -1,39 +1,53 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
+const test=require("node:test");
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const vm=require("node:vm");
 
-const source = fs.readFileSync("staging-preview/neon-app.js", "utf8");
-const start = source.indexOf("function isSignedJwt(token){");
-const end = source.indexOf("\nasync function api(path,", start);
-assert.ok(start >= 0 && end > start, "Staging auth helper must exist");
-assert.match(source, /createAuthClient\(AUTH_URL,\{fetchOptions:\{credentials:"include"\}\}\)/,
-  "Cross-origin Neon session cookies must be included");
-
-const authCode = source.slice(start, end);
-async function jwtFor(sessionResponse, tokenResponse = {data: {token: null}}) {
-  const context = {
-    auth: {
-      getSession: async () => sessionResponse,
-      token: async () => tokenResponse,
-    },
-  };
-  vm.runInNewContext(authCode + "; globalThis.testApiJwt = apiJwt;", context);
-  return context.testApiJwt();
+const src=fs.readFileSync("staging-preview/neon-app.js","utf8");
+assert.match(src,/createAuthClient\(AUTH_URL\)/,"Use the supported Neon vanilla client");
+const start=src.indexOf("function isSignedJwt(value){");
+const end=src.indexOf("\nasync function api(path,",start);
+assert.ok(start>=0 && end>start,"Signed JWT helper is present");
+const helper=src.slice(start,end);
+function client(auth){
+  const context={auth};
+  vm.runInNewContext(helper+";globalThis.apiJwt=apiJwt;globalThis.isSignedJwt=isSignedJwt;",context);
+  return context;
 }
-const user = {email: "owner@example.test"};
-test("prefers the Neon access_token JWT", async () => {
-  assert.equal(await jwtFor({data: {user, session: {access_token: "signed.jwt.value", token: "opaque-session"}}}), "signed.jwt.value");
+const user={id:"owner-test"};
+test("use JWT from official token endpoint", async()=>{
+  const c=client({token:async()=>({data:{token:"head.payload.sig"}})});
+  assert.equal(await c.apiJwt(),"head.payload.sig");
 });
-test("uses the documented session.token JWT when signed", async () => {
-  assert.equal(await jwtFor({data: {user, session: {token: "header.payload.signature"}}}), "header.payload.signature");
+test("recover JWT from documented getSession response header",async()=>{
+  const c=client({
+    token:async()=>({data:{token:null}}),
+    getSession:async options=>{
+      options.fetchOptions.onSuccess({response:{headers:{get:n=>n==="set-auth-jwt"?"head.payload.sig":null}}});
+      return {data:{user,session:{token:"opaque-session-id"}}};
+    }
+  });
+  assert.equal(await c.apiJwt(),"head.payload.sig");
 });
-test("falls back to the Better Auth JWT endpoint, never the opaque ID", async () => {
-  assert.equal(await jwtFor({data: {user, session: {token: "opaque-session"}}}, {data: {token: "fallback.jwt.signature"}}), "fallback.jwt.signature");
+test("never forward Better Auth session ID as JWT",async()=>{
+  const c=client({token:async()=>({data:{token:"opaque-session-id"}}),getSession:async()=>({data:{user,session:{token:"opaque-session-id"}}})});
+  await assert.rejects(c.apiJwt(),/Neon JWT token could not be retrieved/);
 });
-test("rejects an opaque session token", async () => {
-  await assert.rejects(jwtFor({data: {user, session: {token: "opaque-session"}}}), /did not return a signed API token/);
+test("reject unauthenticated user",async()=>{
+  const c=client({token:async()=>({data:null}),getSession:async()=>({data:{user:null}})});
+  await assert.rejects(c.apiJwt(),/Sign in to continue/);
 });
-test("rejects unauthenticated access", async () => {
-  await assert.rejects(jwtFor({data: null}), /Sign in to continue/);
+test("use signed JWT header when token endpoint errors",async()=>{
+  const c=client({
+    token:async()=>{throw Error("network")},
+    getSession:async options=>{
+      options.fetchOptions.onSuccess({response:{headers:{get:()=> "header.payload.signature"}}});
+      return {data:{user}};
+    }
+  });
+  assert.equal(await c.apiJwt(),"header.payload.signature");
+});
+test("staging source parses as valid module body",()=>{
+  const noImport=src.replace(/^import \{ createAuthClient \} from "[^"]+";\s*/,"");
+  assert.doesNotThrow(()=>new vm.Script(noImport));
 });
