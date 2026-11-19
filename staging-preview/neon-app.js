@@ -248,9 +248,18 @@ bind("adminOverview",async()=>{
   }
   out("Administrator dashboard loaded. Registered shops: "+data.shopCount);
 });
-bind("applications",async()=>out(await api("/api/admin/shop-applications")));
-bind("approve",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"approved"})));
-bind("reject",async()=>out(await api("/api/admin/shop-applications/"+encodeURIComponent($("applicationId").value)+"/review","PATCH",{status:"rejected"})));
+async function loadApplications(){
+  const data=await api("/api/admin/shop-applications");
+  const applications=Array.isArray(data.applications)?data.applications:[];
+  const picker=$("applicationPicker"),current=$("applicationId").value;
+  picker.replaceChildren(new Option("Choose pending application",""),...applications.filter(a=>a.status==="pending").map(a=>new Option(a.shop_name+" — "+a.area+" ("+a.owner_name+")",a.id)));
+  if(applications.some(a=>a.id===current&&a.status==="pending"))picker.value=current;
+  out("Applications: "+applications.length+" total; "+applications.filter(a=>a.status==="pending").length+" pending.");
+}
+$("applicationPicker").addEventListener("change",()=>{$("applicationId").value=$("applicationPicker").value});
+bind("applications",loadApplications);
+bind("approve",async()=>{const id=required("applicationId","Application");if(!window.confirm("Approve this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"approved"});await loadApplications();out("Shop approved. Refresh dashboard totals to see the updated record.");});
+bind("reject",async()=>{const id=required("applicationId","Application");if(!window.confirm("Reject this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"rejected"});await loadApplications();out("Shop application rejected. Refresh dashboard totals to see updated counts.");});
 bind("orders",async()=>out(await api("/api/admin/orders")));
 }
 bind("notifications",async()=>out(await api("/api/notifications")));
