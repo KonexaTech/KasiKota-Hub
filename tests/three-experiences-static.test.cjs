@@ -39,16 +39,18 @@ test("customer dashboard buttons link to existing, role-gated owner and admin pa
 
 test("shop registration opens as a modal from customer navigation",()=>{
   assert.match(customer,/href="\.\/neon-owner\.html#registerShop">Register your shop<\/a>/);
-  assert.match(owner,/<dialog id="registerShop"/);
-  assert.match(owner,/id="shopRegistrationForm"/);
-  assert.match(owner,/id="regOwnerName"/);
-  assert.match(owner,/id="regShopName"/);
-  assert.match(owner,/id="regEmail"/);
-  assert.match(owner,/id="regPassword"/);
-  assert.match(owner,/id="closeRegistration"/);
+  assert.match(customer,/<dialog id="registerShop"/);
+  assert.match(customer,/id="shopRegistrationForm"/);
+  assert.match(customer,/id="regOwnerName"/);
+  assert.match(customer,/id="regShopName"/);
+  assert.match(customer,/id="regEmail"/);
+  assert.match(customer,/id="regPassword"/);
+  assert.match(customer,/id="closeRegistration"/);
+  assert.doesNotMatch(owner,/shopRegistrationForm|registerShop|regOwnerName/);
 });
 test("owner account must verify email and receive admin approval before dashboard access",()=>{
   const ownerClient=fs.readFileSync("staging-preview/neon-app.js","utf8");
+  const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
   assert.match(ownerClient,/sendVerificationOtp\(\{email,type:"email-verification"\}\)/);
   assert.match(ownerClient,/verifyEmail\(\{email,otp\}\)/);
   assert.match(ownerClient,/\/api\/owner\/access/);
@@ -56,4 +58,13 @@ test("owner account must verify email and receive admin approval before dashboar
   assert.match(backend,/SELECT 1 FROM kc_shops WHERE owner_subject=\$1 AND approved=true LIMIT 1/);
   assert.match(backend,/Shop owner access is locked until an administrator approves your application/);
   assert.match(backend,/INSERT INTO kc_shops\(owner_subject,name,area,address,phone,approved\)/);
+});
+
+test("shop registration is located on the customer page, not the owner dashboard",()=>{
+  const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
+  assert.match(customer,/id="openShopRegistration"/);
+  assert.match(customer,/src="\.\/kota-shop-registration\.mjs"/);
+  assert.match(registration,/POST.*\/api\/shop-applications/s);
+  assert.match(registration,/await auth\.signOut\(\)/);
+  assert.doesNotMatch(owner,/id="shopRegistrationForm"|id="registerShop"/);
 });
