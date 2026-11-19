@@ -48,7 +48,8 @@ export async function neonApi(request,env,withDb){
       const shops=(await db.query("SELECT id,name,area,address,phone,approved,created_at FROM kc_shops ORDER BY created_at DESC LIMIT 500")).rows;
       const applications=(await db.query("SELECT status,count(*)::int AS count FROM kc_shop_applications GROUP BY status")).rows;
       const completed=(await db.query("SELECT count(*)::int AS eligible FROM kc_orders WHERE status='completed' AND test_order=false")).rows[0]?.eligible||0;
-      return {shops,shopCount:shops.length,approvedShopCount:shops.filter(s=>s.approved).length,
+      const totals=(await db.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE approved=true)::int AS approved FROM kc_shops")).rows[0];
+      return {shops,shopCount:totals.total,approvedShopCount:totals.approved,
         applications,eligibleCompletedOrders:completed,estimatedCommissionCents:completed*50,
         collectedCommissionCents:null,commissionCollectionStatus:"No verified collection ledger configured"};
     }));
