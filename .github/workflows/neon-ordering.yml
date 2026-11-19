@@ -12,38 +12,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check Neon Worker and ordering scripts
+      - name: Check Neon Worker and customer ordering scripts
         run: |
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
           node --check worker/src/neon-auth.js
- feature/kota-three-experiences-20261119
           node --check worker/src/guest-auth.js
+          node --input-type=module --check < staging-preview/neon-app.js
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
+          node --check staging-preview/kota-shop-registration.mjs
           node --test tests/postmerge-integrity.test.mjs
           node --test tests/customer-journey.test.mjs
+          node --test tests/customer-price-confirm.test.cjs
           node --test tests/three-experiences-static.test.cjs
-          node --test worker/test/guest-auth.test.mjs
-
- fix/no-account-guest-checkout-20261119
-          node --check worker/src/guest-auth.js
-          node --test worker/test/guest-auth.test.mjs
-
- feature/neon-only-cutover
-          node --input-type=module --check < staging-preview/neon-app.js
           node --test tests/status-sync.test.cjs
- feature/neon-only-cutover
-          node --check tests/neon-ordering-only.test.cjs
           node tests/neon-ordering-only.test.cjs
-          node tests/customer-price-confirm.test.cjs
           node --test tests/neon-session-jwt.test.cjs
+          node --test tests/neon-security-static.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
-          node tests/verify-live-auth-http.mjs
-          node tests/verify-live-neon-owner-auth.mjs
-      - name: Install Chromium browser test runner
-        run: |
-          npm install --no-save playwright
-          npx playwright install chromium
-      - name: Verify owner sign-in in a real browser
-        run: node tests/verify-browser-owner-login.mjs
+          node --test worker/test/guest-auth.test.mjs

@@ -11,7 +11,7 @@ export async function verifiedNeonSubject(request, env) {
     const jwksUrl = new URL(configuredJwks);
     let jwks = jwksCache.get(jwksUrl.href);
     if (!jwks) { jwks = createRemoteJWKSet(jwksUrl); jwksCache.set(jwksUrl.href, jwks); }
-    const issuer = new URL(base).origin;
+    const issuer = base;
     const { payload } = await jwtVerify(token, jwks, { algorithms: ["EdDSA"], issuer, audience: issuer });
     if (typeof payload.sub !== "string" || !payload.sub || !payload.exp || !payload.iat) return null;
     return payload.sub;

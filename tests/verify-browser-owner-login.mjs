@@ -1,5 +1,4 @@
-// Real headless-browser acceptance: owner signup, sign-out, sign-in and /api/me.
-// Staging-only disposable account; never print credentials, cookies, JWT or user IDs.
+// Real headless-browser acceptance: owner signup, sign-out, sign-in and pending-approval lock.
 import { chromium } from "playwright";
 import {randomBytes} from "node:crypto";
 const base="https://kota-connect-neon-staging.pages.dev/neon-owner.html";
@@ -22,7 +21,7 @@ try{
   try{
    const url=new URL(response.url());
    if(url.host==="kota-connect-neon-staging.pages.dev" &&
-       (url.pathname.startsWith("/auth/")||url.pathname==="/api/me"))
+       (url.pathname.startsWith("/auth/")||url.pathname==="/api/me"||url.pathname==="/api/owner/access"))
      authTraffic.push({path:url.pathname,status:response.status()});
   }catch{}
  });
@@ -36,16 +35,19 @@ try{
  if(signupActivity.startsWith("Error:"))throw Error("Browser signup: "+signupActivity.slice(0,200));
  await page.locator("#signout").click();
  await page.waitForFunction(()=>document.querySelector("#identity")?.textContent?.includes("Not signed in"),null,{timeout:30000});
+ await page.locator("#email").fill(email);
+ await page.locator("#password").fill(password);
  await page.locator("#signin button").click();
  await page.waitForFunction(()=>{
    const identity=document.querySelector("#identity")?.textContent||"";
    const result=document.querySelector("#result")?.textContent||"";
-   return identity.includes("@")||result.startsWith("Error:");
+   return identity.toLowerCase().includes("awaiting administrator approval")||result.startsWith("Error:");
  },null,{timeout:30000});
  const finalActivity=(await page.locator("#result").textContent())||"";
  const identity=(await page.locator("#identity").textContent())||"";
- const allowed=await page.locator('[data-restricted-panel]').first().evaluate(el=>!el.hidden);
- console.log(JSON.stringify({stage:"browser_owner_login",hasIdentity:identity.includes("@"),allowed,activityError:finalActivity.startsWith("Error:")?finalActivity.slice(0,240):null,traffic:authTraffic.slice(-20),pageErrors:errors.slice(-5)}));
- if(!identity.includes("@")||!allowed)throw Error("Browser owner sign-in or role enforcement failed");
- console.log("PASS: browser signup -> signout -> signin -> JWT -> owner dashboard");
+ const pendingApproval=identity.toLowerCase().includes("awaiting administrator approval");
+ const allowed=await page.locator("[data-restricted-panel]").first().evaluate(el=>!el.hidden);
+ console.log(JSON.stringify({stage:"browser_owner_login",pendingApproval,allowed,activityError:finalActivity.startsWith("Error:")?finalActivity.slice(0,240):null,traffic:authTraffic.slice(-20),pageErrors:errors.slice(-5)}));
+ if(!pendingApproval||allowed||finalActivity.startsWith("Error:"))throw Error("Owner login or pending-approval access control failed");
+ console.log("PASS: browser signup -> signout -> signin -> signed JWT -> owner dashboard remains locked pending approval");
 }finally{await browser.close()}
