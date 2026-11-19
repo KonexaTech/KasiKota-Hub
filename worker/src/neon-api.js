@@ -1,5 +1,6 @@
 import { verifiedNeonSubject, isNeonAdmin } from "./neon-auth.js";
 import { isOwnerOnlyRoute } from "./role-policy.js";
+import { guestRouteAllowed, verifiedGuestSubject } from "./guest-auth.js";
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","cache-control":"no-store"}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
@@ -9,7 +10,10 @@ export async function neonApi(request,env,withDb){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(!path.startsWith("/api/"))return null;
   if(method==="GET"&&path==="/api/health"){try{const db=await withDb(env,async c=>(await c.query("SELECT 1 AS ok")).rows[0]);return json({ok:db?.ok===1,backend:"neon",authConfigured:Boolean(env.NEON_AUTH_URL||env.NEON_AUTH_BASE_URL)})}catch(e){const code=typeof e?.code==="string"&&/^[A-Z0-9_]{2,12}$/.test(e.code)?e.code:"UNKNOWN";return json({ok:false,backend:"neon",database:"unavailable",errorCode:code,errorType:typeof e?.name==="string"?e.name.slice(0,50):"Unknown",phase: /connect|socket|network|fetch|timeout|tls|ssl/i.test(String(e?.message||""))?"connection":"database",diagnostic: /Database target does not match development branch/i.test(String(e?.message||""))?"wrong_database_target":/Expected development database host not configured/i.test(String(e?.message||""))?"missing_target_guard":/Invalid database connection URL/i.test(String(e?.message||""))?"invalid_database_url":/Database binding not configured/i.test(String(e?.message||""))?"missing_binding":/password authentication failed/i.test(String(e?.message||""))?"authentication":/getaddrinfo|ENOTFOUND|dns/i.test(String(e?.message||""))?"dns":/certificate|tls|ssl/i.test(String(e?.message||""))?"tls":/timeout|ETIMEDOUT/i.test(String(e?.message||""))?"timeout":/connect|socket|network|fetch/i.test(String(e?.message||""))?"network":"unclassified"},503)}}
-  const subject=await verifiedNeonSubject(request,env);
+  // Allow no-account customers only on explicitly listed customer routes.
+  // Owner/admin routes still require a signed Neon JWT.
+  const subject=(await verifiedNeonSubject(request,env)) ||
+    (guestRouteAllowed(method,path)?await verifiedGuestSubject(request):null);
   if(method==="GET"&&path==="/api/shops")return json({shops:(await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone FROM kc_shops WHERE approved=true ORDER BY name LIMIT 100")).rows))});
   const menu=/^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
   if(method==="GET"&&menu&&uuid.test(menu[1]))return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.approved=true AND m.available=true AND m.shop_id=$1 ORDER BY m.name LIMIT 100",[menu[1]])).rows)});
