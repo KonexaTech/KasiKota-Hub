@@ -44,11 +44,11 @@ test("network failures have a distinct message",async()=>{
   await assert.rejects(create(new Error("network")).request(),/could not be reached/);
 });
 test("whole app parses and keeps role authorization on the server",()=>{
-  const script=app.replace(/^import\\s+\\{[^}]+\\}\\s+from\\s+"[^"]+";\\s*/gm,"");
+  const script=app.replace(/^import\s+\{[^}]+\}\s+from\s+"[^"]+";\s*/gm,"");
   assert.doesNotThrow(()=>new vm.Script(script));
-  assert.match(app,/fetch\\(tokenUrl,/);
+  assert.match(app,/fetch\(tokenUrl,/);
   assert.match(app,/credentials:"include"/);
-  assert.match(app,/me\\.admin===false/);
-  assert.match(app,/me\\.admin===true/);
-  assert.doesNotMatch(app,/submitPendingShopApplication\\(\\)/);
+  assert.match(app,/me\.admin===false/);
+  assert.match(app,/me\.admin===true/);
+  assert.doesNotMatch(app,/submitPendingShopApplication\(\)/);
 });
