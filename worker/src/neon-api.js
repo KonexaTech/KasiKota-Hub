@@ -24,6 +24,18 @@ export async function neonApi(request,env,withDb){
   if(!subject)return json({error:"Sign in with Neon Auth"},401);
   // Admin accounts must never act as shop owners, even by calling the API directly.
   if(isOwnerOnlyRoute(path)&&await isNeonAdmin(env,withDb,subject))return json({error:"Administrator accounts cannot use shop-owner functions. Sign in using a separate owner account."},403);
+  if(path.startsWith("/api/owner/")&&path!=="/api/owner/access"){
+    const approved=await withDb(env,async db=>(await db.query("SELECT 1 FROM kc_shops WHERE owner_subject=$1 AND approved=true LIMIT 1",[subject])).rowCount===1);
+    if(!approved)return json({error:"Shop owner access is locked until an administrator approves your application."},403);
+  }
+  if(method==="GET"&&path==="/api/owner/access"){
+    const access=await withDb(env,async db=>{
+      const shop=(await db.query("SELECT 1 FROM kc_shops WHERE owner_subject=$1 AND approved=true LIMIT 1",[subject])).rowCount===1;
+      const application=(await db.query("SELECT status FROM kc_shop_applications WHERE applicant_subject=$1 ORDER BY created_at DESC LIMIT 1",[subject])).rows[0];
+      return {approved:shop,applicationStatus:application?.status||null};
+    });
+    return json(access);
+  }
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
   if(method==="GET"&&path==="/api/owner/shops")return json({shops:await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone,approved FROM kc_shops WHERE owner_subject=$1 ORDER BY created_at DESC LIMIT 50",[subject])).rows)});

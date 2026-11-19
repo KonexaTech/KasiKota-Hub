@@ -55,17 +55,18 @@ async function showIdentity(){
   if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
   try{
     const me=await api("/api/me");
-    const allowed=role==="admin"?me.admin===true:me.admin===false;
+    const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
+    const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
-    $("identity").textContent=allowed?r.data.user.email:(role==="owner"?"Owner access denied: an administrator account is signed in. Sign out and use a different shop-owner email.":"Administrator access denied: this account is not an approved administrator.");
+    $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
     $("identity").textContent="Unable to verify "+role+" access. Try signing in again.";
     throw e;
   }
 }
-$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="owner"&&!dashboardAccess)throw Error("Administrator accounts cannot sign in as shop owners. Sign out and use another owner account.");if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
-bind("sendVerification",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
-bind("verifyEmail",async()=>{const email=$("email").value.trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);out("Email verified. You can sign in with your password. Use Reset password only if you need to change it.")});
+$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");if(role==="owner")await submitPendingShopApplication();await showIdentity();if(role==="owner"&&dashboardAccess){await loadOwnerOrders(false);out("Signed in. Your shop is approved.");}else if(role==="owner"){await auth.signOut();await showIdentity();out("Your email is verified and your shop application has been submitted. You can sign in to the owner dashboard after the administrator approves your shop.");}else if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");else out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
+bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
+bind("verifyEmail",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();if(!email||!otp)throw Error("Enter your email and verification code");const r=await auth.emailOtp.verifyEmail({email,otp});if(r.error)throw Error(r.error.message);$("registrationStatus")&&($("registrationStatus").textContent="Email verified. You can now sign in above. Your shop application will be submitted after successful sign-in.");out("Email verified. You can now sign in with your password.")});
 bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
 $("signup").onclick=safe(async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out(role==="owner"?"Account created. Send a verification code and verify your email before signing in or applying for a shop.":"Account created")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
@@ -119,6 +120,14 @@ async function viewOwnerMenu(){
 }
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
 bind("apply",async()=>out(await api("/api/shop-applications","POST",{ownerName:$("ownerName").value,shopName:$("shopName").value,phone:$("phone").value,area:$("area").value,address:$("address").value,description:$("description").value})));
+async function submitPendingShopApplication(){
+ const raw=localStorage.getItem("kc_pending_shop_application");if(!raw)return;
+ const pending=JSON.parse(raw);if(pending.email.toLowerCase()!==String((await auth.getSession()).data?.user?.email||"").toLowerCase())return;
+ const response=await api("/api/shop-applications","POST",pending.application);
+ localStorage.removeItem("kc_pending_shop_application");
+ out("Shop application submitted successfully. Application status: "+response.application.status+". You can manage your application from the dashboard.");
+}
+
 bind("applications",async()=>out(await api("/api/shop-applications/mine")));
 let editableShops=[];
 function showEditableShop(){
