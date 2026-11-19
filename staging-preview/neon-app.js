@@ -1,6 +1,6 @@
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
-const auth=createAuthClient(AUTH_URL,{fetchOptions:{credentials:"include"}});
+const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id), role=document.body.dataset.role;
 const API="https://kota-connect-api-dev.siboniisozulu.workers.dev";
 let requestId=null,menu=[],cart=[];
@@ -8,7 +8,26 @@ let dashboardAccess=false;
 function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
-async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){const r=await auth.token();if(r.error)throw Error(r.error.message);if(!r.data?.token)throw Error("Sign in to continue");headers.authorization="Bearer "+r.data.token;}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
+async function apiJwt(){
+  let token=null;
+  if(typeof auth.getJWTToken==="function"){
+    try{token=await auth.getJWTToken()}catch{} // The public client may instead expose token().
+  }
+  if(!token){
+    const r=await auth.token();
+    if(r.error)throw Error(r.error.message);
+    token=r.data?.token;
+  }
+  // Only a signed JWT is valid for the Worker. Never send a session-cookie ID.
+  if(typeof token!=="string"||token.split(".").length!==3){
+    const session=await auth.getSession();
+    if(session.error)throw Error(session.error.message);
+    if(!session.data?.user)throw Error("Sign in to continue");
+    throw Error("Neon did not issue an API access token. Verify your email, sign out, then sign in again.");
+  }
+  return token;
+}
+async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
   showDashboardPanels(false);
