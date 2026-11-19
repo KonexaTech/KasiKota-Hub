@@ -26,3 +26,13 @@ test("admin overview verifies database role and never invents collected commissi
   assert.match(backend,/path==="\/api\/admin\/overview"/);
   assert.match(backend,/collectedCommissionCents:null/);
 });
+
+test("customer dashboard buttons link to existing, role-gated owner and admin pages",()=>{
+  assert.match(customer,/class="dashboard-link owner-link" href="\.\/neon-owner\.html">Shop Owner Dashboard<\/a>/);
+  assert.match(customer,/class="dashboard-link admin-link" href="\.\/neon-admin\.html">Admin Dashboard<\/a>/);
+  assert.match(owner,/data-role="owner"/);
+  assert.match(admin,/data-role="admin"/);
+  assert.match(customer,/id="area"/);
+  assert.match(customer,/id="shopSearch"/);
+  assert.match(customer,/id="menuItems"/);
+});
