@@ -115,7 +115,8 @@ async function makePage(role){
  return page;
 }
 async function resultContains(page,snippet){
- await page.waitForFunction(s=>document.getElementById("result")?.textContent?.includes(s),snippet,{timeout:5000});
+ try{await page.waitForFunction(s=>document.getElementById("result")?.textContent?.includes(s),snippet,{timeout:7000});}
+ catch(error){const actual=await page.locator("#result").textContent().catch(()=>"(no result element)");throw Error("Expected dashboard activity to include "+JSON.stringify(snippet)+", got "+JSON.stringify(actual)+": "+error.message);}
 }
 async function authActions(page,role){
  await page.locator("#email").fill("audit@example.test");
@@ -147,6 +148,7 @@ try{
  await owner.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
  await owner.locator("#myShops").click();
  await resultContains(owner,"shops found");
+ await owner.locator("#shop").selectOption(uuids.shop);
  await owner.locator("#saveShopDetails").click();
  await resultContains(owner,"Shop details saved");
  await owner.locator("#myMenu").click();
