@@ -55,15 +55,16 @@ async function showIdentity(){
   if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
   try{
     const me=await api("/api/me");
-    const allowed=role==="admin"?me.admin===true:me.admin===false;
+    const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
+    const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
-    $("identity").textContent=allowed?r.data.user.email:(role==="owner"?"Owner access denied: an administrator account is signed in. Sign out and use a different shop-owner email.":"Administrator access denied: this account is not an approved administrator.");
+    $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
     $("identity").textContent="Unable to verify "+role+" access. Try signing in again.";
     throw e;
   }
 }
-$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");await showIdentity();if(role==="owner"&&dashboardAccess){await submitPendingShopApplication();await loadOwnerOrders(false);}if(role==="owner"&&!dashboardAccess)throw Error("Administrator accounts cannot sign in as shop owners. Sign out and use another owner account.");if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
+$("signin").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{const r=await auth.signIn.email({email:$("email").value,password:$("password").value});if(r.error)throw Error(r.error.message);if(!r.data)throw Error("Sign-in did not return an account");if(role==="owner")await submitPendingShopApplication();await showIdentity();if(role==="owner"&&dashboardAccess){await loadOwnerOrders(false);out("Signed in. Your shop is approved.");}else if(role==="owner"){await auth.signOut();await showIdentity();out("Your email is verified and your shop application has been submitted. You can sign in to the owner dashboard after the administrator approves your shop.");}else if(role==="admin"&&!dashboardAccess)throw Error("This account is not authorized as an administrator.");else out(role==="admin"?"Signed in. Administrator access verified.":"Signed in")})()});
 $("shopRegistrationForm").addEventListener("submit",e=>{e.preventDefault();safe(async()=>{
  const email=required("regEmail","Email").toLowerCase();
  const password=required("regPassword","Password");
