@@ -48,6 +48,8 @@ export default {
       }
     }
 
+    if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
+
     const workerOrigin = new URL(request.url).origin;
     if (request.method === "GET" && path === "/staging") {
       const page = await fetch("https://raw.githubusercontent.com/siboniisozulu-alt/KasiKota-Hub/fix/six-release-gates-neon-staging/neon-staging.html", { cf: { cacheTtl: 60, cacheEverything: true } });
@@ -78,7 +80,6 @@ export default {
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
 
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
-    if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
 
     try {
       const response = await neonApi(request, env, withDb);
