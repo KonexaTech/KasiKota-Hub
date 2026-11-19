@@ -15,7 +15,10 @@ if(health.status!==200||health.body?.ok!==true||health.body?.backend!=="neon")th
 const catalog=await request("/api/shops");
 if(catalog.status!==200||!Array.isArray(catalog.body?.shops)||!catalog.body.shops.length)throw Error("Approved shop catalog is empty or unavailable");
 let chosen=null;
-for(const shop of catalog.body.shops){
+const orderedShops=[...catalog.body.shops].sort((a,b)=>
+ Number(/staging test kitchen/i.test(b.name||""))-Number(/staging test kitchen/i.test(a.name||""))
+);
+for(const shop of orderedShops){
  const menu=await request("/api/shops/"+encodeURIComponent(shop.id)+"/menu");
  if(menu.status===200&&Array.isArray(menu.body?.items)&&menu.body.items.length){chosen={shop,item:menu.body.items[0]};break}
 }
