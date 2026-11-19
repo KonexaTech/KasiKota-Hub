@@ -22,6 +22,7 @@ jobs:
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
           node --test tests/customer-journey.test.mjs
+          node --test tests/three-experiences-static.test.cjs
           node --test worker/test/guest-auth.test.mjs
 
  fix/no-account-guest-checkout-20261119
