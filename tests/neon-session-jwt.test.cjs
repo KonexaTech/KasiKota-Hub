@@ -27,7 +27,7 @@ test("retrieves a signed JWT from the same-origin Neon Auth token endpoint",asyn
  assert.equal(calls[0].options.cache,"no-store");
 });
 test("accepts the wrapped Neon token response shape",async()=>{
- const {request}=create({payload:{data:{token:"head.payload.signature"}});
+ const {request}=create({payload:{data:{token:"head.payload.signature"}}});
  assert.equal(await request(),"head.payload.signature");
 });
 test("rejects opaque session cookies instead of sending them as bearer JWTs",async()=>{

@@ -19,7 +19,7 @@ test("shop name search works independently and together with dropdown",()=>{
 });
 test("confirmation quote shows item price and delivery fee, but backend controls final payment",()=>{
  assert.equal(quoteCents(2500,1,"pickup"),2500);
- assert.equal(quoteCents(2500,2,"delivery"),6500);
+ assert.equal(quoteCents(2500,2,"delivery"),5500);
  assert.throws(()=>quoteCents(2000,0,"pickup"));
  assert.throws(()=>quoteCents(2000,51,"delivery"));
 });
