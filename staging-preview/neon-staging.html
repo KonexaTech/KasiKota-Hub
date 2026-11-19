@@ -10,7 +10,7 @@
 <section><h2>Results</h2><pre id="notice" role="status">Ready.</pre></section>
 <script type="module">
 import { createAuthClient } from "https://esm.sh/@neon/neon-js@latest/auth";
-const AUTH_URL="https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth";
+const AUTH_URL=new URL("/auth",location.origin).href;
 const auth=createAuthClient(AUTH_URL);
 const $=id=>document.getElementById(id),say=value=>$("notice").textContent=typeof value==="string"?value:JSON.stringify(value,null,2);
 async function session(){const r=await auth.getSession();if(r.error)throw Error(r.error.message);return r.data}
