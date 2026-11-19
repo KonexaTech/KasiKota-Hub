@@ -38,7 +38,7 @@ test("customer dashboard buttons link to existing, role-gated owner and admin pa
 });
 
 test("shop registration opens as a modal from customer navigation",()=>{
-  assert.match(customer,/href="\.\/neon-owner\.html#registerShop">Register your shop<\/a>/);
+  assert.match(customer,/id="openShopRegistration"/);
   assert.match(customer,/<dialog id="registerShop"/);
   assert.match(customer,/id="shopRegistrationForm"/);
   assert.match(customer,/id="regOwnerName"/);
