@@ -1,4 +1,5 @@
 import { verifiedNeonSubject, isNeonAdmin } from "./neon-auth.js";
+import { isOwnerOnlyRoute } from "./role-policy.js";
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","cache-control":"no-store"}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
@@ -13,6 +14,8 @@ export async function neonApi(request,env,withDb){
   const menu=/^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
   if(method==="GET"&&menu&&uuid.test(menu[1]))return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.approved=true AND m.available=true AND m.shop_id=$1 ORDER BY m.name LIMIT 100",[menu[1]])).rows)});
   if(!subject)return json({error:"Sign in with Neon Auth"},401);
+  // Admin accounts must never act as shop owners, even by calling the API directly.
+  if(isOwnerOnlyRoute(path)&&await isNeonAdmin(env,withDb,subject))return json({error:"Administrator accounts cannot use shop-owner functions. Sign in using a separate owner account."},403);
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
   if(method==="GET"&&path==="/api/owner/shops")return json({shops:await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone,approved FROM kc_shops WHERE owner_subject=$1 ORDER BY created_at DESC LIMIT 50",[subject])).rows)});
