@@ -16,6 +16,8 @@ on:
       - 'tests/verify-live-auth-http.mjs'
       - 'tests/verify-live-neon-owner-auth.mjs'
       - 'tests/verify-browser-owner-login.mjs'
+      - 'tests/verify-browser-all-buttons.mjs'
+      - 'tests/dashboard-buttons-audit.test.cjs'
       - 'tests/verify-live-guest-order.mjs'
       - 'worker/test/release-gates.integration.mjs'
       - '.github/workflows/deploy-neon-staging.yml'
@@ -99,7 +101,9 @@ jobs:
           npm install --no-save playwright
           npx playwright install chromium
       - name: Verify customer registration and owner/admin access gates in a real browser
-        run: node tests/verify-browser-owner-login.mjs
+        run: |
+          node tests/verify-browser-owner-login.mjs
+          node tests/verify-browser-all-buttons.mjs
       - name: Run full authenticated customer-owner-admin integration when credentials exist
         env:
           KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
