@@ -29,3 +29,11 @@ jobs:
           node tests/customer-price-confirm.test.cjs
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
+          node tests/verify-live-auth-http.mjs
+          node tests/verify-live-neon-owner-auth.mjs
+      - name: Install Chromium browser test runner
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium
+      - name: Verify owner sign-in in a real browser
+        run: node tests/verify-browser-owner-login.mjs
