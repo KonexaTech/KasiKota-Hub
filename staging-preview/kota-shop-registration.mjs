@@ -40,7 +40,7 @@ $("confirmRegistration").addEventListener("click",async()=>{
   const response=await fetch(new URL("/auth/token",location.origin),{method:"GET",credentials:"include",cache:"no-store",headers:{accept:"application/json"}});
   const tokenData=await response.json();
   const token=tokenData?.token??tokenData?.data?.token;
-  if(!response.ok||typeof token!=="string"||!token.split(".").length===3)throw Error("Email verified, but the secure application service could not be reached. Please contact support before retrying.");
+  if(!response.ok||typeof token!=="string"||token.split(".").length!==3)throw Error("Email verified, but the secure application service could not be reached. Please contact support before retrying.");
   const submitted=await fetch("/api/shop-applications",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify(pending.application),cache:"no-store"});
   const result=await submitted.json();
   if(!submitted.ok)throw Error(result.error||"Shop application could not be submitted.");
