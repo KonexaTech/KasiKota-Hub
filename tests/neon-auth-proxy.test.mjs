@@ -17,7 +17,7 @@ globalThis.fetch=async(input,options={})=>{
 };
 const assets={ASSETS:{fetch:async()=>new Response("static asset",{status:200})}};
 function getCookies(res){return res.headers.getSetCookie?.()||[res.headers.get("set-cookie")].filter(Boolean)}
-test("auth JWT endpoint uses same-origin proxy, sends browser cookie to only fixed Neon host",async()=>{
+test("auth token endpoint proxies same-origin browser cookie to the fixed Neon Auth host",async()=>{
   calls.length=0;
   const req=new Request(site+"/auth/token",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque"}});
   const res=await worker.fetch(req,assets);
@@ -26,7 +26,7 @@ test("auth JWT endpoint uses same-origin proxy, sends browser cookie to only fix
   assert.equal(calls[0].url,"https://ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/token");
   assert.equal(calls[0].headers.get("cookie"),"__Secure-neon-auth.session_token=opaque");
 });
-test("auth proxy rewrites cookies to staging origin without exposing their secret",async()=>{
+test("auth proxy rewrites cookies to the staging origin with secure cookie flags",async()=>{
   const res=await worker.fetch(new Request(site+"/auth/get-session"),assets);
   const cookie=getCookies(res)[0];
   assert.match(cookie,/HttpOnly/);
@@ -39,11 +39,11 @@ test("auth proxy rewrites cookies to staging origin without exposing their secre
 });
 test("rejects cross-origin sign-in requests",async()=>{
   calls.length=0;
-  const res=await worker.fetch(new Request(site+"/auth/sign-in/email",{method:"POST",headers:{Origin:"https://evil.example", "Content-Type":"application/json"},body:"{}"}),assets);
+  const res=await worker.fetch(new Request(site+"/auth/sign-in/email",{method:"POST",headers:{Origin:"https://evil.example","Content-Type":"application/json"},body:"{}"}),assets);
   assert.equal(res.status,403);
   assert.equal(calls.length,0);
 });
-test("API routes keep signed bearer token but never forward browser session cookie",async()=>{
+test("API proxy forwards a signed bearer token but never forwards the browser session cookie",async()=>{
   calls.length=0;
   const req=new Request(site+"/api/me",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque",Authorization:"Bearer signed.jwt.signature"}});
   await worker.fetch(req,assets);
@@ -51,17 +51,22 @@ test("API routes keep signed bearer token but never forward browser session cook
   assert.equal(calls[0].headers.get("authorization"),"Bearer signed.jwt.signature");
   assert.equal(calls[0].url,"https://kota-connect-api-dev.siboniisozulu.workers.dev/api/me");
 });
-test("non auth/API assets retain existing Pages asset handler",async()=>{
+test("non-auth static assets retain the Pages asset handler",async()=>{
   const res=await worker.fetch(new Request(site+"/neon-owner.html"),assets);
   assert.equal(await res.text(),"static asset");
 });
-test("browser app uses same-origin Auth and server-verified role checking",()=>{
+test("owner/admin client obtains a signed session JWT and checks roles server-side",()=>{
   const app=fs.readFileSync("staging-preview/neon-app.js","utf8");
   assert.match(app,/const AUTH_URL=new URL\("\/auth",location.origin\)\.href;/);
-  assert.match(app,/fetch\(tokenUrl,/);
-  assert.match(app,/credentials:"include"/);
+  assert.match(app,/session\.data\.session\.token/);
+  assert.match(app,/function apiJwt\(\)/);
   assert.match(app,/\/api\/me/);
   assert.match(app,/me\.admin===false/);
   assert.match(app,/me\.admin===true/);
+  assert.match(app,/ownerAccess\?\.approved===true/);
+  const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
+  assert.match(registration,/\/api\/shop-applications/);
+  assert.match(registration,/emailOtp\.verifyEmail/);
+  assert.match(registration,/await auth\.signOut\(\)/);
 });
 test.after(()=>{globalThis.fetch=oldFetch});
