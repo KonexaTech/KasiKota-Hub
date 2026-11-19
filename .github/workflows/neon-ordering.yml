@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/neon-only-cutover
+  workflow_dispatch:
 jobs:
   neon-ordering:
     runs-on: ubuntu-latest
@@ -17,7 +18,6 @@ jobs:
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
           node --check worker/src/neon-auth.js
- feature/kota-three-experiences-20261119
           node --check worker/src/guest-auth.js
           node --check staging-preview/kota-customer.mjs
           node --check staging-preview/shop-discovery.mjs
@@ -25,25 +25,29 @@ jobs:
           node --test tests/customer-journey.test.mjs
           node --test tests/three-experiences-static.test.cjs
           node --test worker/test/guest-auth.test.mjs
-
- fix/no-account-guest-checkout-20261119
-          node --check worker/src/guest-auth.js
-          node --test worker/test/guest-auth.test.mjs
-
- feature/neon-only-cutover
           node --input-type=module --check < staging-preview/neon-app.js
           node --test tests/status-sync.test.cjs
- feature/neon-only-cutover
           node --check tests/neon-ordering-only.test.cjs
           node tests/neon-ordering-only.test.cjs
           node tests/customer-price-confirm.test.cjs
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
+          node --test tests/neon-security-static.test.cjs
+      - name: Verify live staging Auth and API routes
+        if: github.event_name == 'workflow_dispatch'
+        run: |
           node tests/verify-live-auth-http.mjs
           node tests/verify-live-neon-owner-auth.mjs
-      - name: Install Chromium browser test runner
+      - name: Verify approved owner dashboard in a real browser
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
+          KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}
         run: |
+          if [ -z "$KOTA_TEST_OWNER_EMAIL" ] || [ -z "$KOTA_TEST_OWNER_PASSWORD" ]; then
+            echo "SKIP: configure optional approved-owner test credentials to run this browser acceptance test."
+            exit 0
+          fi
           npm install --no-save playwright
           npx playwright install chromium
-      - name: Verify owner sign-in in a real browser
-        run: node tests/verify-browser-owner-login.mjs
+          node tests/verify-browser-owner-login.mjs
