@@ -20,30 +20,18 @@ function isSignedJwt(value){
   return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  // Avoid a known SDK path that can return cached session data in place of a JWT.
-  const tokenUrl=(AUTH_URL.endsWith("/")?AUTH_URL.slice(0,-1):AUTH_URL)+"/token";
-  let response;
-  try{
-    response=await fetch(tokenUrl,{
-      method:"GET",credentials:"include",cache:"no-store",
-      headers:{"accept":"application/json"}
-    });
-  }catch{
-    throw Error("Neon JWT endpoint could not be reached");
-  }
+  // Use Neon Auth's supported Managed Auth client method. It refreshes and
+  // returns the signed access JWT from the current first-party session.
   let result;
-  try{result=await response.json()}catch{
-    throw Error("Neon JWT endpoint returned an invalid response (HTTP "+response.status+")");
+  try{
+    result=await auth.token();
+  }catch{
+    throw Error("Neon Auth could not issue an API access token");
   }
-  const token=result?.token??result?.data?.token;
-  if(response.ok&&isSignedJwt(token))return token;
-  const state=!response.ok
-    ? "HTTP "+response.status
-    : "HTTP "+response.status+" without a signed JWT";
-  const reason=typeof result?.error?.message==="string"?result.error.message:
-    typeof result?.message==="string"?result.message:null;
-  // Never print the session cookie or a returned token in diagnostic output.
-  throw Error("Neon JWT endpoint failed ("+state+")"+(reason?": "+reason:""));
+  if(result?.error)throw Error(result.error.message||"Neon Auth token request failed");
+  const token=result?.data?.token;
+  if(isSignedJwt(token))return token;
+  throw Error("Neon Auth did not return a signed API access token");
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
