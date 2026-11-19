@@ -50,7 +50,10 @@ async function showIdentity(){
     showDashboardPanels(allowed);
     $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
-    $("identity").textContent="Unable to verify "+role+" access: "+(e?.message||"please sign in again.");
+    const message=String(e?.message||"please sign in again.");
+    $("identity").textContent=message.includes("Email verification required")
+      ?"Email verification required. Send a verification code and verify your email before using this dashboard."
+      :"Unable to verify "+role+" access: "+message;
     throw e;
   }
 }
