@@ -19,3 +19,4 @@ jobs:
           node --check worker/src/neon-auth.js
           node --check tests/neon-ordering-only.test.cjs
           node tests/neon-ordering-only.test.cjs
+          node --test tests/neon-session-jwt.test.cjs
