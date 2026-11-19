@@ -20,18 +20,30 @@ function isSignedJwt(value){
   return typeof value==="string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 }
 async function apiJwt(){
-  // Use Neon Auth's supported Managed Auth client method. It refreshes and
-  // returns the signed access JWT from the current first-party session.
-  let result;
+  // Prefer Managed Auth's token endpoint. Some Managed Auth responses also
+  // expose the same signed JWT on get-session as set-auth-jwt.
+  let tokenError="no token returned";
   try{
-    result=await auth.token();
-  }catch{
-    throw Error("Neon Auth could not issue an API access token");
+    const result=await auth.token();
+    if(result?.error)tokenError=result.error.message||"token endpoint returned an error";
+    else if(isSignedJwt(result?.data?.token))return result.data.token;
+    else tokenError="token endpoint response did not contain a signed JWT";
+  }catch(error){
+    tokenError=error?.message||"token endpoint request failed";
   }
-  if(result?.error)throw Error(result.error.message||"Neon Auth token request failed");
-  const token=result?.data?.token;
-  if(isSignedJwt(token))return token;
-  throw Error("Neon Auth did not return a signed API access token");
+  let sessionError="JWT response header missing";
+  try{
+    let headerToken="";
+    const session=await auth.getSession({fetchOptions:{onSuccess(context){
+      headerToken=context.response.headers.get("set-auth-jwt")||"";
+    }}});
+    if(session?.error)sessionError=session.error.message||"session request failed";
+    else if(isSignedJwt(headerToken))return headerToken;
+    else if(!session?.data?.user)sessionError="no active signed-in session";
+  }catch(error){
+    sessionError=error?.message||"session request failed";
+  }
+  throw Error("Neon Auth did not issue a signed API JWT. Token endpoint: "+tokenError+". Session JWT header: "+sessionError+".");
 }
 async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
