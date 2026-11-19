@@ -39,4 +39,5 @@ test("whole app parses and keeps admin/owner authorization on server",()=>{
  assert.match(app,/session\.data\.session\.token/);
  assert.match(app,/me\.admin===false/);
  assert.match(app,/me\.admin===true/);
+ assert.doesNotMatch(app,/submitPendingShopApplication\(\)/);
 });
