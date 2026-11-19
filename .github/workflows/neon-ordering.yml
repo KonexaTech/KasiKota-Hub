@@ -17,6 +17,8 @@ jobs:
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
           node --check worker/src/neon-auth.js
+          node --check worker/src/guest-auth.js
+          node --test worker/test/guest-auth.test.mjs
           node --check tests/neon-ordering-only.test.cjs
           node tests/neon-ordering-only.test.cjs
           node --test tests/neon-session-jwt.test.cjs
