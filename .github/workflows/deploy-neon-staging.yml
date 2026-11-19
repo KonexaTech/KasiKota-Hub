@@ -4,12 +4,13 @@ on:
   push:
     branches:
       - feature/neon-only-cutover
+      - feature/customer-nav-dashboard-preview-20261119
     paths:
       - 'worker/**'
       - '.github/workflows/deploy-neon-staging.yml'
 jobs:
   staging:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    if: github.ref == 'refs/heads/feature/neon-only-cutover' || github.ref == 'refs/heads/feature/customer-nav-dashboard-preview-20261119'
     runs-on: ubuntu-latest
     environment: neon-staging
     steps:
