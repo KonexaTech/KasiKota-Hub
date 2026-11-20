@@ -10,6 +10,7 @@ let dashboardAccess=false;
 let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
 let loadAdminOrders=async()=>{};
+let loadAdminCommission=async()=>{};
 let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
@@ -18,12 +19,13 @@ function showDashboardPanels(allowed){
   dashboardAccess=Boolean(allowed);
   document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
   if(!dashboardAccess){
-    if($("manageShopDialog")?.open)$("manageShopDialog").close();
+    for(const id of ["manageShopDialog","customerOrdersDialog","notificationsPanel","commissionDialog"])if($(id)?.open)$(id).close();
     $("notificationList")?.replaceChildren();
     if($("unread"))$("unread").textContent="Sign in to see notifications.";
     if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications";
     if($("adminOrderList"))$("adminOrderList").replaceChildren();
     if($("adminOrderCount"))$("adminOrderCount").textContent="Sign in to view the latest orders.";
+    if($("commissionPreviewAmount"))$("commissionPreviewAmount").textContent="R0.00";
   }
 }
 function showAccountActions(signedIn){
@@ -111,7 +113,7 @@ $("signin").addEventListener("submit",e=>{
       await showIdentity();
       throw Error("This account is not authorized as an administrator.");
     }else{
-      if(role==="admin")await loadAdminOrders(false);
+      if(role==="admin"){await loadAdminOrders(false);await loadAdminCommission(false);}
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
@@ -462,6 +464,41 @@ loadAdminOrders=async function(announce=true){
   if(announce)out("Orders loaded: "+orders.length+(orders.length?" · "+orders.map(item=>item.order_number).filter(Boolean).join(", "):""));
 };
 bind("orders",async()=>loadAdminOrders(true));
+const money=cents=>"R"+(Number(cents||0)/100).toFixed(2);
+loadAdminCommission=async function(announce=true){
+  const data=await api("/api/admin/commission");
+  if(data.commissionPaused!==true||data.rateCents!==50)throw Error("Unexpected commission configuration; no collection actions are allowed.");
+  const estimate=money(data.estimatedCommissionCents);
+  $("commissionPreviewAmount").textContent=estimate;
+  $("commissionEstimate").textContent=estimate;
+  $("commissionEligible").textContent=String(data.eligibleCompletedOrders);
+  $("commissionRemaining").textContent=money(data.remainingToThresholdCents);
+  $("commissionStatus").textContent="Collection paused · Forecast only · "+data.excludedTestOrders+" completed test order(s) excluded.";
+  const list=$("commissionShopList");list.replaceChildren();
+  const active=(Array.isArray(data.shops)?data.shops:[]).filter(shop=>shop.eligibleOrders>0);
+  if(!active.length){
+    const empty=document.createElement("p");empty.className="section-hint";
+    empty.textContent="No completed, non-test orders yet. Commission estimates will appear here.";
+    list.append(empty);
+  }
+  for(const shop of active){
+    const row=document.createElement("div");row.className="commission-shop-row";
+    const name=document.createElement("strong");name.textContent=String(shop.shopName||"Shop");
+    const details=document.createElement("span");details.textContent=String(shop.eligibleOrders)+" completed order(s)";
+    const amount=document.createElement("b");amount.textContent=money(shop.estimatedCommissionCents);
+    row.append(name,details,amount);list.append(row);
+  }
+  if(announce)out("Commission estimates refreshed. No commissions have been charged or collected.");
+};
+bind("refreshCommission",async()=>loadAdminCommission(true));
+const commissionDialog=$("commissionDialog");
+$("openCommission")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Administrator sign-in required to see commissions.");
+  if(!commissionDialog.open)commissionDialog.showModal();
+  loadAdminCommission(false).catch(error=>out("Unable to load commission: "+error.message));
+});
+$("closeCommission")?.addEventListener("click",()=>commissionDialog.close());
+commissionDialog?.addEventListener("click",event=>{if(event.target===commissionDialog)commissionDialog.close()});
 }
 // The server returns only this signed-in user's most recent notifications (read and unread).
 // Render them inside Notifications rather than dumping JSON into the Activity panel.
@@ -518,6 +555,7 @@ async function pollNotifications(force=false){
       const unread=notifications.filter(n=>!n.read_at).length;
       $("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
       if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"+(unread?" ("+unread+" new)":"");
+      if($("openDashboardNotifications"))$("openDashboardNotifications").textContent="View notifications"+(unread?" ("+unread+" new)":"");
       return notifications;
     }catch(error){
       if(dashboardAccess)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
@@ -534,16 +572,30 @@ async function markNotificationRead(id){
   await pollNotifications(true);
   out("Notification marked as read.");
 }
-const shortcut=$("openNotifications");
-if(shortcut)shortcut.addEventListener("click",()=>{
+const ordersDialog=$("customerOrdersDialog");
+$("openCustomerOrders")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in to open customer orders.");
+  if(!ordersDialog.open)ordersDialog.showModal();
+  const refresh=role==="admin"?loadAdminOrders:loadOwnerOrders;
+  refresh(false).catch(error=>out("Unable to refresh orders: "+error.message));
+});
+$("closeCustomerOrders")?.addEventListener("click",()=>ordersDialog.close());
+ordersDialog?.addEventListener("click",event=>{if(event.target===ordersDialog)ordersDialog.close()});
+const notificationsDialog=$("notificationsPanel");
+function openNotificationsDialog(){
   if(!dashboardAccess){
     out("Sign in with your approved "+(role==="owner"?"shop-owner":"administrator")+" account to view notifications.");
     $("accountPanel").scrollIntoView({behavior:"smooth",block:"start"});
     return;
   }
-  $("notificationsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  if(!notificationsDialog.open)notificationsDialog.showModal();
   pollNotifications(true).catch(error=>out("Unable to refresh notifications: "+error.message));
-});
+}
+const shortcut=$("openNotifications");
+if(shortcut)shortcut.addEventListener("click",openNotificationsDialog);
+$("openDashboardNotifications")?.addEventListener("click",openNotificationsDialog);
+$("closeNotifications")?.addEventListener("click",()=>notificationsDialog.close());
+notificationsDialog?.addEventListener("click",event=>{if(event.target===notificationsDialog)notificationsDialog.close()});
 bind("notifications",async()=>{
   const items=await pollNotifications(true);
   out("Notifications updated. "+items.length+" message"+(items.length===1?"":"s")+" shown in Notifications.");
@@ -551,7 +603,7 @@ bind("notifications",async()=>{
 bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
 showIdentity().then(async()=>{
   if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
-  if(role==="admin"&&dashboardAccess)await loadAdminOrders(false);
+  if(role==="admin"&&dashboardAccess){await loadAdminOrders(false);await loadAdminCommission(false);}
   if(role==="customer")await refreshCustomerTracking(false);
   await pollNotifications(true);
 }).catch(()=>{});
