@@ -47,7 +47,6 @@ export default {
         return json({ status: "unavailable", database: "failed" }, 503, headers);
       }
     }
-    if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
     if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
 
     const workerOrigin = new URL(request.url).origin;
@@ -78,6 +77,9 @@ export default {
       return json({message:"If the account exists, a reset email has been sent."},200,headers);
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+
+    // Password recovery and staging pages have already been handled; preserve API-only routing for everything else.
+    if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
 
     try {
       const response = await neonApi(request, env, withDb);
