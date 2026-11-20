@@ -215,6 +215,14 @@ bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId
 bind("timeline",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history")));
 }
 if(role==="owner"){
+const shopDialog=$("manageShopDialog");
+$("manageShopButton")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with an approved shop-owner account to manage your shop.");
+  if(!shopDialog?.open)shopDialog.showModal();
+  $("myShops")?.click();
+});
+$("closeManageShop")?.addEventListener("click",()=>shopDialog?.close());
+shopDialog?.addEventListener("click",event=>{if(event.target===shopDialog)shopDialog.close()});
 let menuLoadedShop="",menuSnapshot="";
 const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
 const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
@@ -377,7 +385,83 @@ $("applicationPicker").addEventListener("change",()=>{$("applicationId").value=$
 bind("applications",loadApplications);
 bind("approve",async()=>{const id=required("applicationId","Application");if(!window.confirm("Approve this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"approved"});await loadApplications();out("Shop approved. Refresh dashboard totals to see the updated record.");});
 bind("reject",async()=>{const id=required("applicationId","Application");if(!window.confirm("Reject this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"rejected"});await loadApplications();out("Shop application rejected. Refresh dashboard totals to see updated counts.");});
-bind("orders",async()=>out(await api("/api/admin/orders")));
+const formatAdminMoney=cents=>Number.isFinite(Number(cents))?"R"+(Number(cents)/100).toFixed(2):"—";
+const formatAdminDate=value=>{
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Date unavailable":date.toLocaleString("en-ZA",{dateStyle:"medium",timeStyle:"short"});
+};
+function renderAdminOrders(orders){
+  const list=$("adminOrderList");
+  list.replaceChildren();
+  if(!orders.length){
+    const empty=document.createElement("p");empty.className="section-hint";
+    empty.textContent="There are no customer orders yet.";
+    list.append(empty);return;
+  }
+  for(const order of orders){
+    const card=document.createElement("article");card.className="admin-order-card";card.setAttribute("role","listitem");
+    const header=document.createElement("div");header.className="admin-order-header";
+    const heading=document.createElement("h3");heading.textContent=String(order.order_number||"Order");
+    const state=document.createElement("span");state.className="admin-order-status";
+    state.dataset.state=String(order.status||"pending");state.textContent=String(order.status||"pending").replaceAll("_"," ");
+    header.append(heading,state);
+    const meta=document.createElement("p");meta.className="admin-order-meta";
+    meta.textContent=[String(order.shop_name||"Shop not specified"),formatAdminDate(order.created_at)].join(" · ");
+    const fields=document.createElement("dl");fields.className="admin-order-fields";
+    const pairs=[
+      ["Customer",order.customer_name||"Not provided"],
+      ["Order total",formatAdminMoney(order.total_cents)],
+      ["Collection / delivery",order.fulfillment_type==="pickup"?"Collection":order.fulfillment_type==="delivery"?"Delivery":"Not specified"],
+      ["Area",order.area||"Not specified"]
+    ];
+    for(const [label,value] of pairs){
+      const pair=document.createElement("div");
+      const term=document.createElement("dt");term.textContent=label;
+      const detail=document.createElement("dd");detail.textContent=String(value);
+      pair.append(term,detail);fields.append(pair);
+    }
+    const detailButton=document.createElement("button");
+    detailButton.type="button";detailButton.className="secondary";
+    detailButton.textContent="View order items";
+    detailButton.setAttribute("aria-expanded","false");
+    const detailPanel=document.createElement("div");detailPanel.className="admin-order-items";detailPanel.hidden=true;
+    detailButton.onclick=safe(async()=>{
+      if(!detailPanel.hidden){
+        detailPanel.hidden=true;detailButton.textContent="View order items";detailButton.setAttribute("aria-expanded","false");return;
+      }
+      detailButton.disabled=true;detailButton.textContent="Loading items…";
+      try{
+        const response=await api("/api/orders/"+encodeURIComponent(order.id)+"/items");
+        const items=Array.isArray(response.items)?response.items:[];
+        detailPanel.replaceChildren();
+        const title=document.createElement("strong");title.textContent="Items in this order";
+        detailPanel.append(title);
+        const ul=document.createElement("ul");
+        for(const item of items){
+          const li=document.createElement("li");
+          li.textContent=String(item.item_name||item.name||"Menu item")+" × "+String(item.quantity||1)+" · "+formatAdminMoney(item.unit_price_cents??item.price_cents);
+          ul.append(li);
+        }
+        if(!items.length){const empty=document.createElement("p");empty.textContent="No line items available.";detailPanel.append(empty)}
+        else detailPanel.append(ul);
+        detailPanel.hidden=false;
+        detailButton.setAttribute("aria-expanded","true");
+      }finally{
+        detailButton.disabled=false;
+        detailButton.textContent=detailPanel.hidden?"View order items":"Hide order items";
+      }
+    });
+    card.append(header,meta,fields,detailButton,detailPanel);list.append(card);
+  }
+}
+loadAdminOrders=async function(announce=true){
+  const response=await api("/api/admin/orders");
+  const orders=Array.isArray(response.orders)?response.orders:[];
+  renderAdminOrders(orders);
+  $("adminOrderCount").textContent=orders.length+" recent order"+(orders.length===1?"":"s")+" · Live Neon records";
+  if(announce)out("Orders loaded: "+orders.length+(orders.length?" · "+orders.map(item=>item.order_number).filter(Boolean).join(", "):""));
+};
+bind("orders",async()=>loadAdminOrders(true));
 }
 // The server returns only this signed-in user's most recent notifications (read and unread).
 // Render them inside Notifications rather than dumping JSON into the Activity panel.
@@ -467,6 +551,7 @@ bind("notifications",async()=>{
 bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
 showIdentity().then(async()=>{
   if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
+  if(role==="admin"&&dashboardAccess)await loadAdminOrders(false);
   if(role==="customer")await refreshCustomerTracking(false);
   await pollNotifications(true);
 }).catch(()=>{});
