@@ -213,6 +213,7 @@ try{
  assert.match(await admin.locator("#adminOrderList").innerText(),/TEST-LOCAL-001/);
  assert.match(await admin.locator("#adminOrderList").innerText(),/R25.00/);
  await admin.locator("#adminOrderList .admin-order-card button").click();
+ await admin.locator("#adminOrderList .admin-order-items").waitFor({state:"visible"});
  assert.match(await admin.locator("#adminOrderList").innerText(),/Classic Kota/);
  await admin.locator("#notifications").click();
  assert.match(await admin.locator("#notificationList").innerText(),/New test order/);
