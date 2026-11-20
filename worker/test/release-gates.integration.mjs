@@ -132,6 +132,14 @@ const adminOrders=expect(await call("/api/admin/orders","admin"),200,"admin orde
 if(!adminOrders.orders?.some(o=>o.id===orderId)||!adminOrders.orders?.some(o=>o.id===secondOrderId))throw Error("Admin cannot see the shop's orders");
 expect(await call("/api/orders/"+orderId+"/items","admin"),200,"admin order items");
 expect(await call("/api/orders/"+orderId+"/history","admin"),200,"admin order history");
+expect(await call("/api/admin/commission","owner"),403,"owner denied administrator commission");
+expect(await call("/api/admin/commission",null),401,"anonymous denied administrator commission");
+const commission=expect(await call("/api/admin/commission","admin"),200,"administrator commission estimates");
+if(commission.commissionPaused!==true||commission.rateCents!==50||commission.thresholdCents!==2000||commission.collectedCommissionCents!==null)
+ throw Error("Commission must remain paused, role-scoped and uncollected, at R0.50 per completed non-test order.");
+if(commission.estimatedCommissionCents!==commission.eligibleCompletedOrders*50||commission.remainingToThresholdCents!==Math.max(0,2000-commission.estimatedCommissionCents))
+ throw Error("Commission forecast or R20 threshold calculation is inconsistent.");
+if(!Array.isArray(commission.shops))throw Error("Commission per-shop ledger is missing.");
 const overview=expect(await call("/api/admin/overview","admin"),200,"admin overview");
 if(overview.commissionPaused!==true||overview.estimatedCommissionCents!==0)throw Error("Launch commission is not paused");
 const rejectedPayload=payload();
@@ -144,4 +152,4 @@ if(rejectedTrack.order?.status!=="rejected")throw Error("Rejected order status d
 expect(await call("/api/orders/"+rejectedId,"customer"),403,"other guest rejected-order isolation");
 for(const route of ["/api/owner/orders","/api/admin/orders"])
  expect(await call(route,null),401,"anonymous "+route);
-console.log("PASS: REAL_DEV_INTEGRATION signed owner/admin authentication, guest ordering, idempotency, strict role isolation, order statuses, customer tracking, notifications, admin oversight, rejection flow and paused commission");
+console.log("PASS: REAL_DEV_INTEGRATION signed owner/admin authentication, guest ordering, idempotency, strict role isolation, order statuses, customer tracking, notifications, admin oversight, secure commission estimates, rejection flow and paused collection");
