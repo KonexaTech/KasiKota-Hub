@@ -77,7 +77,7 @@ test("readable notifications appear inside both dashboards, with one-tap read an
    assert.match(page,/id="notificationList"/);
    assert.match(page,/id="notifications"/);
    assert.match(page,/id="markRead"/);
-   assert.match(page,/neon-app\.js\?v=20261119-notifications-v1/);
+   assert.match(page,/neon-app\.js\?v=20261120-notification-shortcut-v1/);
  }
  assert.match(client,/renderNotifications\(notifications\)/);
  assert.match(client,/notification\.title/);
@@ -89,4 +89,17 @@ test("readable notifications appear inside both dashboards, with one-tap read an
  assert.match(backend,/n\.recipient_subject=\$1/);
  assert.match(backend,/New shop application/);
  assert.match(backend,/FROM kc_admins/);
+});
+
+test("a visible Notifications shortcut is first in owner and admin navigation and opens the account or feed",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ for(const page of [owner,admin]){
+   assert.match(page,/<nav aria-label="Dashboard navigation"><button id="openNotifications"/);
+   assert.match(page,/id="notificationsPanel" data-restricted-panel hidden/);
+   assert.match(page,/id="accountPanel"/);
+ }
+ assert.match(client,/shortcut\.addEventListener\("click"/);
+ assert.match(client,/\$\("notificationsPanel"\)\.scrollIntoView/);
+ assert.match(client,/\$\("accountPanel"\)\.scrollIntoView/);
+ assert.match(client,/openNotifications"\)\.textContent="🔔 Notifications"/);
 });

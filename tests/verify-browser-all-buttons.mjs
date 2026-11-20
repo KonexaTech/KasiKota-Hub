@@ -146,6 +146,10 @@ async function authActions(page,role){
 try{
  const owner=await makePage("owner");
  await owner.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
+ assert.equal(await owner.locator("#openNotifications").isVisible(),true);
+ await owner.locator("#openNotifications").click();
+ await owner.waitForFunction(()=>window.scrollY>0,null,{timeout:3000});
+ assert.match(await owner.locator("#openNotifications").innerText(),/Notifications/);
  await owner.locator("#myShops").click();
  await resultContains(owner,"shops found");
  await owner.locator("#shop").selectOption(uuids.shop);
@@ -176,6 +180,10 @@ try{
 
  const admin=await makePage("admin");
  await admin.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
+ assert.equal(await admin.locator("#openNotifications").isVisible(),true);
+ await admin.locator("#openNotifications").click();
+ await admin.waitForFunction(()=>window.scrollY>0,null,{timeout:3000});
+ assert.match(await admin.locator("#openNotifications").innerText(),/Notifications/);
  await admin.locator("#adminOverview").click();
  await resultContains(admin,"Administrator dashboard loaded");
  await admin.locator("#applications").click();

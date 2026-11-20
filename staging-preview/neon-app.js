@@ -13,7 +13,7 @@ let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
-function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});if(!dashboardAccess){$("notificationList")?.replaceChildren();if($("unread"))$("unread").textContent="Sign in to see notifications."}}
+function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});if(!dashboardAccess){$("notificationList")?.replaceChildren();if($("unread"))$("unread").textContent="Sign in to see notifications.";if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"}}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -393,6 +393,7 @@ async function pollNotifications(force=false){
       renderNotifications(notifications);
       const unread=notifications.filter(n=>!n.read_at).length;
       $("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
+      if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"+(unread?" ("+unread+" new)":"");
       return notifications;
     }catch(error){
       if(dashboardAccess)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
@@ -409,6 +410,16 @@ async function markNotificationRead(id){
   await pollNotifications(true);
   out("Notification marked as read.");
 }
+const shortcut=$("openNotifications");
+if(shortcut)shortcut.addEventListener("click",()=>{
+  if(!dashboardAccess){
+    out("Sign in with your approved "+(role==="owner"?"shop-owner":"administrator")+" account to view notifications.");
+    $("accountPanel").scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
+  $("notificationsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  pollNotifications(true).catch(error=>out("Unable to refresh notifications: "+error.message));
+});
 bind("notifications",async()=>{
   const items=await pollNotifications(true);
   out("Notifications updated. "+items.length+" message"+(items.length===1?"":"s")+" shown in Notifications.");
