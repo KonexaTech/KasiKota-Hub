@@ -162,7 +162,6 @@ try{
  assert.equal(await owner.locator("#manageShopDialog").isVisible(),false);
  await owner.locator("#manageShopButton").click();
  assert.equal(await owner.locator("#manageShopDialog").isVisible(),true);
- await owner.locator("#myShops").click();
  await resultContains(owner,"shops found");
  await owner.locator("#shop").selectOption(uuids.shop);
  await owner.locator("#saveShopDetails").click();
