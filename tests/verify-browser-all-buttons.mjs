@@ -119,15 +119,24 @@ async function resultContains(page,snippet){
  catch(error){const actual=await page.locator("#result").textContent().catch(()=>"(no result element)");throw Error("Expected dashboard activity to include "+JSON.stringify(snippet)+", got "+JSON.stringify(actual)+": "+error.message);}
 }
 async function authActions(page,role){
+ // Mock starts with a session, so sign out before exercising email verification.
+ await page.locator("#signout").click();
+ await resultContains(page,"Signed out");
+ assert.equal(await page.locator("#togglePasswordReset").isVisible(),false,"Reset password must be post-login only");
  await page.locator("#email").fill("audit@example.test");
+ await page.locator("#verificationHelp summary").click();
  await page.locator("#sendVerification").click();
  await resultContains(page,"Verification code requested");
- await page.locator("#verificationCode").fill("123456");
+ await page.locator("#emailVerificationCode").fill("123456");
  await page.locator("#verifyEmail").click();
  await resultContains(page,"Email verified");
  await page.locator("#password").fill("MockPassword123!");
  await page.locator("#signin button").click();
  await resultContains(page,role==="admin"?"Administrator access verified":"Your shop is approved");
+ assert.equal(await page.locator("#togglePasswordReset").isVisible(),true);
+ assert.equal(await page.locator("#passwordResetFields").isVisible(),false);
+ await page.locator("#togglePasswordReset").click();
+ assert.equal(await page.locator("#passwordResetFields").isVisible(),true);
  await page.locator("#forgotPassword").click();
  await resultContains(page,"password reset code has been sent");
  await page.locator("#verificationCode").fill("654321");
@@ -150,7 +159,9 @@ try{
  await owner.locator("#openNotifications").click();
  await owner.waitForFunction(()=>window.scrollY>0,null,{timeout:3000});
  assert.match(await owner.locator("#openNotifications").innerText(),/Notifications/);
- await owner.locator("#myShops").click();
+ assert.equal(await owner.locator("#manageShopDialog").isVisible(),false);
+ await owner.locator("#manageShopButton").click();
+ assert.equal(await owner.locator("#manageShopDialog").isVisible(),true);
  await resultContains(owner,"shops found");
  await owner.locator("#shop").selectOption(uuids.shop);
  await owner.locator("#saveShopDetails").click();
@@ -161,6 +172,8 @@ try{
  await owner.locator("#saveMenu").click();
  await resultContains(owner,"Menu saved");
  assert.equal(menu[0].price_cents,2600);
+ await owner.locator("#closeManageShop").click();
+ assert.equal(await owner.locator("#manageShopDialog").isVisible(),false);
  await owner.locator("#myOrders").click();
  await resultContains(owner,"orders");
  await owner.locator("#orderItems").click();
@@ -197,6 +210,11 @@ try{
  assert.equal(applications.filter(x=>x.status==="pending").length,0);
  await admin.locator("#orders").click();
  await resultContains(admin,"TEST-LOCAL-001");
+ assert.match(await admin.locator("#adminOrderList").innerText(),/TEST-LOCAL-001/);
+ assert.match(await admin.locator("#adminOrderList").innerText(),/R25.00/);
+ await admin.locator("#adminOrderList .admin-order-card button").click();
+ await admin.locator("#adminOrderList .admin-order-items").waitFor({state:"visible"});
+ assert.match(await admin.locator("#adminOrderList").innerText(),/Classic Kota/);
  await admin.locator("#notifications").click();
  assert.match(await admin.locator("#notificationList").innerText(),/New test order/);
  assert.match(await admin.locator("#notificationList").innerText(),/Read/);

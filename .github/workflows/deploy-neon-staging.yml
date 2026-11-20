@@ -103,7 +103,7 @@ jobs:
         run: |
           for attempt in $(seq 1 30); do
             page="$(curl --silent --show-error --fail https://kota-connect-neon-staging.pages.dev/neon-admin || true)"
-            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261120-notification-shortcut-v1'; then
+            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261120-professional-dashboards-v1'; then
               echo "Matching Pages dashboard client is live"
               exit 0
             fi

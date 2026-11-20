@@ -58,3 +58,44 @@ a{color:var(--kc-green)}
 .notification-card .notification-status{font-size:.82rem;font-weight:800;color:var(--kc-green)}
 .notification-card button{margin:8px 0 0;font-size:.88rem}
 .notification-card .notification-body{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--kc-ink)}
+
+/* Owner and administrator staging dashboards: accessible, focused professional panels. */
+.section-action-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px}
+.section-action-row h2{margin:0 0 4px}
+.section-hint,.account-intro{font-size:.91rem;line-height:1.55;color:var(--kc-muted);margin:.35rem 0 .9rem}
+.dashboard-quick-card .section-hint{margin-bottom:0}
+.account-actions{display:flex;flex-wrap:wrap;gap:9px;margin:16px 0 4px}
+.account-disclosure{border:1px solid var(--kc-line);border-radius:14px;margin:14px 0;background:#fbfdfb;overflow:hidden}
+.account-disclosure summary{cursor:pointer;display:list-item;font-weight:800;padding:13px 16px;color:var(--kc-green)}
+.account-disclosure summary:focus-visible{outline:3px solid #f4772166;outline-offset:-3px}
+.account-subpanel{border:1px solid #dbe5dc;background:#f8fbf8;border-radius:14px;padding:16px;margin-top:14px}
+.account-disclosure .account-subpanel{margin:0;border:0;border-top:1px solid var(--kc-line);border-radius:0;background:#fff}
+.account-subpanel[hidden],#signedInAccountActions[hidden]{display:none!important}
+.account-subpanel h3{margin:0 0 5px;color:var(--kc-green)}
+.account-help-link{font-size:.85rem;margin:9px 0}
+.account-help-link a{font-weight:750}
+.kc-dialog{width:min(640px,calc(100vw - 26px));max-width:none;max-height:min(90dvh,900px);padding:20px 24px 24px;border:1px solid #d4e2d5;border-radius:20px;box-shadow:0 30px 90px #07231566;background:#fff;color:var(--kc-ink);overflow:auto}
+.kc-dialog:not([open]){display:none!important}
+.kc-dialog::backdrop{background:rgba(10,28,17,.62);backdrop-filter:blur(3px)}
+.kc-dialog-header{display:flex;justify-content:space-between;align-items:start;gap:14px;padding-bottom:12px;border-bottom:1px solid var(--kc-line);margin-bottom:14px}
+.kc-dialog-header h2{margin:0!important;font-size:1.4rem!important}
+.kc-dialog-header .eyebrow{display:block;font-size:.74rem;font-weight:850;letter-spacing:.13em;color:var(--kc-orange)}
+.kc-dialog-body h3{margin:20px 0 8px}
+.kc-dialog-body label{margin-top:15px}
+.admin-order-list{display:grid;gap:14px;margin-top:18px}
+.admin-order-card{border:1px solid var(--kc-line);border-radius:17px;padding:18px;background:linear-gradient(140deg,#fff 45%,#fcfcf7);overflow-wrap:anywhere}
+.admin-order-header{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:10px}
+.admin-order-header h3{font-size:1.06rem;margin:0;color:var(--kc-green);font-weight:850}
+.admin-order-meta{color:var(--kc-muted);font-size:.86rem;margin:5px 0 14px}
+.admin-order-status{display:inline-block;border-radius:999px;padding:6px 11px;background:#e7f1e9;color:#125734;font-size:.82rem;font-weight:850;text-transform:capitalize}
+.admin-order-status[data-state="pending"],.admin-order-status[data-state="delayed"]{background:#fff0d7;color:#88520e}
+.admin-order-status[data-state="rejected"]{background:#fae6e4;color:#a03b32}
+.admin-order-status[data-state="completed"]{background:#dff3e6;color:#116137}
+.admin-order-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px 13px;margin:0 0 14px}
+.admin-order-fields div{min-width:0}
+.admin-order-fields dt{color:var(--kc-muted);font-size:.76rem;font-weight:750;text-transform:uppercase;letter-spacing:.035em}
+.admin-order-fields dd{color:var(--kc-ink);font-size:.95rem;font-weight:750;margin:2px 0 0;overflow-wrap:anywhere}
+.admin-order-items{margin:12px 0;padding:13px;border-radius:13px;background:#f1f6f1}
+.admin-order-items[hidden]{display:none!important}
+.admin-order-items ul{padding-left:19px;margin:6px 0}
+@media(max-width:640px){.kc-dialog{padding:16px 15px;max-height:94dvh}.section-action-row>button{width:100%}.admin-order-card{padding:14px}.account-actions>button{flex:1 1 135px}}

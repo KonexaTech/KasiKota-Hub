@@ -11,7 +11,7 @@ const orderClient=source("kota-customer.mjs");
 const registration=source("kota-shop-registration.mjs");
 
 function buttonIds(html){return [...html.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match=>match[1]);}
-function bound(client,id){return client.includes('bind("'+id+'"')||client.includes('$("'+id+'").onclick=')||client.includes('$("'+id+'").addEventListener("click"')||(id==="openNotifications"&&client.includes('const shortcut=$("openNotifications")')&&client.includes('shortcut.addEventListener("click"'));}
+function bound(client,id){const target='$("' +id+ '")';return client.includes('bind("'+id+'"')||client.includes(target+'.onclick=')||client.includes(target+'.addEventListener("click"')||client.includes(target+'?.addEventListener("click"')||(id==="openNotifications"&&client.includes('const shortcut=$("openNotifications")')&&client.includes('shortcut.addEventListener("click"'));}
 
 test("every named owner dashboard button is attached to an action",()=>{
  const ids=buttonIds(owner);

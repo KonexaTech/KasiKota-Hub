@@ -9,11 +9,33 @@ let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
+let loadAdminOrders=async()=>{};
 let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
-function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});if(!dashboardAccess){$("notificationList")?.replaceChildren();if($("unread"))$("unread").textContent="Sign in to see notifications.";if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"}}
+function showDashboardPanels(allowed){
+  dashboardAccess=Boolean(allowed);
+  document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
+  if(!dashboardAccess){
+    if($("manageShopDialog")?.open)$("manageShopDialog").close();
+    $("notificationList")?.replaceChildren();
+    if($("unread"))$("unread").textContent="Sign in to see notifications.";
+    if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications";
+    if($("adminOrderList"))$("adminOrderList").replaceChildren();
+    if($("adminOrderCount"))$("adminOrderCount").textContent="Sign in to view the latest orders.";
+  }
+}
+function showAccountActions(signedIn){
+  if($("signedInAccountActions"))$("signedInAccountActions").hidden=!signedIn;
+  if($("signin"))$("signin").hidden=Boolean(signedIn);
+  if($("verificationHelp"))$("verificationHelp").hidden=Boolean(signedIn);
+  if(!signedIn){
+    if($("passwordResetFields"))$("passwordResetFields").hidden=true;
+    if($("togglePasswordReset"))$("togglePasswordReset").setAttribute("aria-expanded","false");
+  }
+}
+
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -38,16 +60,19 @@ async function api(path,method="GET",body,publicRoute=false){const headers={"con
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
   showDashboardPanels(false);
+  showAccountActions(false);
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
   if(!r.data?.user){$("identity").textContent="Not signed in";return}
-  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
+  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);showAccountActions(true);$("identity").textContent=r.data.user.email;return}
   if(r.data.user.emailVerified===false){showDashboardPanels(false);$("identity").textContent="Email verification required. Send a verification code and verify your email before using this dashboard.";return}
   try{
     const me=await api("/api/me");
     const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
     const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
+    showAccountActions(allowed);
+    if(allowed&&r.data.user.email&&!$("email").value)$("email").value=r.data.user.email;
     $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
     const message=String(e?.message||"please sign in again.");
@@ -86,6 +111,7 @@ $("signin").addEventListener("submit",e=>{
       await showIdentity();
       throw Error("This account is not authorized as an administrator.");
     }else{
+      if(role==="admin")await loadAdminOrders(false);
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
@@ -94,7 +120,7 @@ $("signin").addEventListener("submit",e=>{
 
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{
-  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();
+  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("emailVerificationCode")?.value.trim();
   if(!email||!otp)throw Error("Enter your email and verification code");
   const r=await auth.emailOtp.verifyEmail({email,otp});
   if(r.error)throw Error(r.error.message);
@@ -104,13 +130,19 @@ bind("verifyEmail",async()=>{
   out("Email verified. Please sign in with your password. Owner access remains subject to administrator approval.");
 });
 bind("forgotPassword",async()=>{
-  const email=required("email","Email address").toLowerCase();
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
   const r=await auth.forgetPassword.emailOtp({email});
   if(r?.error)throw Error(r.error.message);
   out("If an account exists for this email, a password reset code has been sent. Enter the code, choose a new password and press Set new password.");
 });
 bind("completePasswordReset",async()=>{
-  const email=required("email","Email address").toLowerCase();
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
   const otp=required("verificationCode","Password reset code");
   const password=required("newPassword","New password");
   if(password.length<12)throw Error("Your new password must contain at least 12 characters.");
@@ -121,6 +153,14 @@ bind("completePasswordReset",async()=>{
   try{await auth.signOut()}catch{}
   await showIdentity();
   out("Password changed successfully. Sign in with your new password.");
+});
+$("togglePasswordReset")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with your authorized account to reset its password.");
+  const fields=$("passwordResetFields");
+  const expanded=fields.hidden;
+  fields.hidden=!expanded;
+  $("togglePasswordReset").setAttribute("aria-expanded",String(expanded));
+  if(expanded)$("forgotPassword").focus();
 });
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
@@ -175,6 +215,14 @@ bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId
 bind("timeline",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history")));
 }
 if(role==="owner"){
+const shopDialog=$("manageShopDialog");
+$("manageShopButton")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with an approved shop-owner account to manage your shop.");
+  if(!shopDialog?.open)shopDialog.showModal();
+  $("myShops")?.click();
+});
+$("closeManageShop")?.addEventListener("click",()=>shopDialog?.close());
+shopDialog?.addEventListener("click",event=>{if(event.target===shopDialog)shopDialog.close()});
 let menuLoadedShop="",menuSnapshot="";
 const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
 const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
@@ -214,7 +262,7 @@ bind("saveShopDetails",async()=>{
   out("Shop details saved. Approved status and existing orders were not changed.");
 });
 
-bind("myShops",async()=>{const r=await api("/api/owner/shops");editableShops=r.shops;option($("shop"),r.shops,x=>x.name);showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
+bind("myShops",async()=>{const selected=$("shop").value;const r=await api("/api/owner/shops");editableShops=Array.isArray(r.shops)?r.shops:[];option($("shop"),editableShops,x=>x.name);if(editableShops.some(shop=>shop.id===selected))$("shop").value=selected;else if(editableShops.length===1)$("shop").value=editableShops[0].id;showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(editableShops.length+" shops found. Select your shop and press View menu.");});
 bind("myMenu",viewOwnerMenu);
 bind("saveMenu",async()=>{
   const shopId=required("shop","Shop");
@@ -337,7 +385,83 @@ $("applicationPicker").addEventListener("change",()=>{$("applicationId").value=$
 bind("applications",loadApplications);
 bind("approve",async()=>{const id=required("applicationId","Application");if(!window.confirm("Approve this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"approved"});await loadApplications();out("Shop approved. Refresh dashboard totals to see the updated record.");});
 bind("reject",async()=>{const id=required("applicationId","Application");if(!window.confirm("Reject this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"rejected"});await loadApplications();out("Shop application rejected. Refresh dashboard totals to see updated counts.");});
-bind("orders",async()=>out(await api("/api/admin/orders")));
+const formatAdminMoney=cents=>Number.isFinite(Number(cents))?"R"+(Number(cents)/100).toFixed(2):"—";
+const formatAdminDate=value=>{
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Date unavailable":date.toLocaleString("en-ZA",{dateStyle:"medium",timeStyle:"short"});
+};
+function renderAdminOrders(orders){
+  const list=$("adminOrderList");
+  list.replaceChildren();
+  if(!orders.length){
+    const empty=document.createElement("p");empty.className="section-hint";
+    empty.textContent="There are no customer orders yet.";
+    list.append(empty);return;
+  }
+  for(const order of orders){
+    const card=document.createElement("article");card.className="admin-order-card";card.setAttribute("role","listitem");
+    const header=document.createElement("div");header.className="admin-order-header";
+    const heading=document.createElement("h3");heading.textContent=String(order.order_number||"Order");
+    const state=document.createElement("span");state.className="admin-order-status";
+    state.dataset.state=String(order.status||"pending");state.textContent=String(order.status||"pending").replaceAll("_"," ");
+    header.append(heading,state);
+    const meta=document.createElement("p");meta.className="admin-order-meta";
+    meta.textContent=[String(order.shop_name||"Shop not specified"),formatAdminDate(order.created_at)].join(" · ");
+    const fields=document.createElement("dl");fields.className="admin-order-fields";
+    const pairs=[
+      ["Customer",order.customer_name||"Not provided"],
+      ["Order total",formatAdminMoney(order.total_cents)],
+      ["Collection / delivery",order.fulfillment_type==="pickup"?"Collection":order.fulfillment_type==="delivery"?"Delivery":"Not specified"],
+      ["Area",order.area||"Not specified"]
+    ];
+    for(const [label,value] of pairs){
+      const pair=document.createElement("div");
+      const term=document.createElement("dt");term.textContent=label;
+      const detail=document.createElement("dd");detail.textContent=String(value);
+      pair.append(term,detail);fields.append(pair);
+    }
+    const detailButton=document.createElement("button");
+    detailButton.type="button";detailButton.className="secondary";
+    detailButton.textContent="View order items";
+    detailButton.setAttribute("aria-expanded","false");
+    const detailPanel=document.createElement("div");detailPanel.className="admin-order-items";detailPanel.hidden=true;
+    detailButton.onclick=safe(async()=>{
+      if(!detailPanel.hidden){
+        detailPanel.hidden=true;detailButton.textContent="View order items";detailButton.setAttribute("aria-expanded","false");return;
+      }
+      detailButton.disabled=true;detailButton.textContent="Loading items…";
+      try{
+        const response=await api("/api/orders/"+encodeURIComponent(order.id)+"/items");
+        const items=Array.isArray(response.items)?response.items:[];
+        detailPanel.replaceChildren();
+        const title=document.createElement("strong");title.textContent="Items in this order";
+        detailPanel.append(title);
+        const ul=document.createElement("ul");
+        for(const item of items){
+          const li=document.createElement("li");
+          li.textContent=String(item.item_name||item.name||"Menu item")+" × "+String(item.quantity||1)+" · "+formatAdminMoney(item.unit_price_cents??item.price_cents);
+          ul.append(li);
+        }
+        if(!items.length){const empty=document.createElement("p");empty.textContent="No line items available.";detailPanel.append(empty)}
+        else detailPanel.append(ul);
+        detailPanel.hidden=false;
+        detailButton.setAttribute("aria-expanded","true");
+      }finally{
+        detailButton.disabled=false;
+        detailButton.textContent=detailPanel.hidden?"View order items":"Hide order items";
+      }
+    });
+    card.append(header,meta,fields,detailButton,detailPanel);list.append(card);
+  }
+}
+loadAdminOrders=async function(announce=true){
+  const response=await api("/api/admin/orders");
+  const orders=Array.isArray(response.orders)?response.orders:[];
+  renderAdminOrders(orders);
+  $("adminOrderCount").textContent=orders.length+" recent order"+(orders.length===1?"":"s")+" · Live Neon records";
+  if(announce)out("Orders loaded: "+orders.length+(orders.length?" · "+orders.map(item=>item.order_number).filter(Boolean).join(", "):""));
+};
+bind("orders",async()=>loadAdminOrders(true));
 }
 // The server returns only this signed-in user's most recent notifications (read and unread).
 // Render them inside Notifications rather than dumping JSON into the Activity panel.
@@ -427,6 +551,7 @@ bind("notifications",async()=>{
 bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
 showIdentity().then(async()=>{
   if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
+  if(role==="admin"&&dashboardAccess)await loadAdminOrders(false);
   if(role==="customer")await refreshCustomerTracking(false);
   await pollNotifications(true);
 }).catch(()=>{});

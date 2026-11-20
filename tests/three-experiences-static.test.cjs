@@ -77,7 +77,7 @@ test("readable notifications appear inside both dashboards, with one-tap read an
    assert.match(page,/id="notificationList"/);
    assert.match(page,/id="notifications"/);
    assert.match(page,/id="markRead"/);
-   assert.match(page,/neon-app\.js\?v=20261120-notification-shortcut-v1/);
+   assert.match(page,/neon-app\.js\?v=20261120-professional-dashboards-v1/);
  }
  assert.match(client,/renderNotifications\(notifications\)/);
  assert.match(client,/notification\.title/);
@@ -102,4 +102,45 @@ test("a visible Notifications shortcut is first in owner and admin navigation an
  assert.match(client,/\$\("notificationsPanel"\)\.scrollIntoView/);
  assert.match(client,/\$\("accountPanel"\)\.scrollIntoView/);
  assert.match(client,/openNotifications"\)\.textContent="🔔 Notifications"/);
+});
+
+test("owner management is a signed-in modal with accessible open and close buttons",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ assert.match(owner,/id="manageShopButton"[^>]*aria-haspopup="dialog"/);
+ assert.match(owner,/<dialog id="manageShopDialog"/);
+ assert.match(owner,/id="closeManageShop"/);
+ assert.match(client,/if\(!dashboardAccess\)return out\("Sign in with an approved shop-owner account/);
+ assert.match(client,/shopDialog\.showModal\(\)/);
+ assert.match(client,/shopDialog\?\.close\(\)/);
+});
+test("account recovery is unobtrusive and password reset only opens after authorized sign-in",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ for(const page of [owner,admin]){
+   assert.match(page,/<details id="verificationHelp"/);
+   assert.match(page,/id="signedInAccountActions" hidden/);
+   assert.match(page,/id="togglePasswordReset"[^>]*aria-controls="passwordResetFields"/);
+   assert.match(page,/id="passwordResetFields" class="account-subpanel" hidden/);
+   assert.match(page,/id="emailVerificationCode"/);
+ }
+ assert.match(client,/showAccountActions\(allowed\)/);
+ assert.match(client,/if\(!dashboardAccess\)throw Error\("Sign in to your authorized dashboard before resetting/);
+ assert.match(client,/\$\("passwordResetFields"\)/);
+});
+test("administrator orders are readable role-scoped Neon records, not raw JSON",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ assert.match(admin,/id="adminOrderList" class="admin-order-list"/);
+ assert.match(admin,/id="adminOrderCount"/);
+ assert.match(client,/function renderAdminOrders\(orders\)/);
+ assert.match(client,/document\.createElement\("article"\)/);
+ assert.match(client,/formatAdminMoney\(order\.total_cents\)/);
+ assert.match(client,/item\.item_name/);
+ assert.match(backend,/o\.customer_name,o\.area,o\.fulfillment_type FROM kc_orders o/);
+ assert.match(backend,/isNeonAdmin\(env,withDb,subject\)/);
+});
+test("Neon-backed notifications stay in place with no Firebase SDK",()=>{
+ const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ assert.match(client,/api\("\/api\/notifications"\)/);
+ assert.match(client,/setInterval\(\(\)=>pollNotifications\(false\)/);
+ assert.doesNotMatch(client,/firebase-messaging|firebase\/app/);
+ assert.doesNotMatch(owner+admin,/firebase-messaging|google-services/);
 });
