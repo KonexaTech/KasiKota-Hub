@@ -1,0 +1,32 @@
+name: Full Kota Connect owner-admin staging acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/neon-only-cutover
+jobs:
+  live-owner-admin:
+    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: neon-staging
+    permissions:
+      contents: read
+    concurrency:
+      group: kota-connect-full-staging-role-acceptance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check real acceptance script
+        run: node --check worker/test/release-gates.integration.mjs
+      - name: Run real signed-in owner and administrator acceptance
+        env:
+          KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+          KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
+          KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}
+          KOTA_TEST_ADMIN_EMAIL: ${{ secrets.KOTA_TEST_ADMIN_EMAIL }}
+          KOTA_TEST_ADMIN_PASSWORD: ${{ secrets.KOTA_TEST_ADMIN_PASSWORD }}
+        run: node worker/test/release-gates.integration.mjs

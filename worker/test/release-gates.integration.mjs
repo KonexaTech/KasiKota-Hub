@@ -1,36 +1,96 @@
-// Full authenticated staging acceptance. Requires dedicated CI guest tokens and verified owner/admin JWTs.
-// No credentials or personal data are logged. Orders created on the dev Worker are test_order=true.
-import { randomUUID } from "node:crypto";
+// Real customer-owner-admin acceptance on the isolated dev Worker and Neon staging.
+// Requires only verified staging owner/admin credentials stored as Actions environment secrets.
+// Generates fresh anonymous guest secrets; discovers the approved owner's shop and menu.
+// Never prints passwords, session cookies, JWTs, account IDs, or customer tokens.
+// All orders created through the dev Worker are flagged as test orders.
+import { randomBytes, randomUUID } from "node:crypto";
+
 const base=process.env.KOTA_TEST_API_BASE||"https://kota-connect-api-dev.siboniisozulu.workers.dev";
-const env={
- customer:process.env.KOTA_TEST_CUSTOMER_TOKEN,
- otherCustomer:process.env.KOTA_TEST_OTHER_CUSTOMER_TOKEN,
- owner:process.env.KOTA_TEST_OWNER_TOKEN,
- otherOwner:process.env.KOTA_TEST_OTHER_OWNER_TOKEN,
- admin:process.env.KOTA_TEST_ADMIN_TOKEN,
- shop:process.env.KOTA_TEST_SHOP_ID,
- menu:process.env.KOTA_TEST_MENU_ITEM_ID
+const site="https://kota-connect-neon-staging.pages.dev";
+if(new URL(base).origin!=="https://kota-connect-api-dev.siboniisozulu.workers.dev")
+ throw Error("Refusing to create test orders outside the dedicated Kota Connect development Worker.");
+
+const required={
+ ownerEmail:process.env.KOTA_TEST_OWNER_EMAIL,
+ ownerPassword:process.env.KOTA_TEST_OWNER_PASSWORD,
+ adminEmail:process.env.KOTA_TEST_ADMIN_EMAIL,
+ adminPassword:process.env.KOTA_TEST_ADMIN_PASSWORD
 };
-for(const key of ["customer","otherCustomer","owner","otherOwner","admin","shop","menu"])
- if(!env[key])throw Error("Missing required staging test setting: "+key);
-for(const key of ["customer","otherCustomer"])
- if(!/^[a-f0-9]{64}$/i.test(env[key]))throw Error(key+" must be a 64-character guest token, not a customer account JWT");
+const missing=Object.entries(required).filter(([,value])=>!value).map(([name])=>name);
+if(missing.length)throw Error(
+ "BLOCKED: Full authenticated role acceptance requires four staging-only GitHub Actions environment secrets: "+
+ "KOTA_TEST_OWNER_EMAIL, KOTA_TEST_OWNER_PASSWORD, KOTA_TEST_ADMIN_EMAIL, KOTA_TEST_ADMIN_PASSWORD. "+
+ "Missing "+missing.length+" secret(s). Do not treat this workflow as passed."
+);
+const env={
+ customer:randomBytes(32).toString("hex"),
+ otherCustomer:randomBytes(32).toString("hex"),
+ owner:null,admin:null,shop:null,menu:null
+};
 function authorization(principal){
- const token=env[principal].replace(/^(?:Bearer|Guest)\s+/i,"");
+ const token=env[principal];
+ if(typeof token!=="string")throw Error("No authenticated staging principal for "+principal);
  return principal==="customer"||principal==="otherCustomer"?"Guest "+token:"Bearer "+token;
 }
 async function call(path,principal,method="GET",body){
  const headers={accept:"application/json"};
  if(principal)headers.authorization=authorization(principal);
  if(body!==undefined)headers["content-type"]="application/json";
- const response=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000),cache:"no-store"});
+ const response=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000),cache:"no-store"});
  const data=await response.json().catch(()=>null);
  return {status:response.status,data};
 }
 function expect(result,status,path){
- if(result.status!==status)throw Error(path+" expected HTTP "+status+", received "+result.status+" ("+(result.data?.error||"no error detail")+")");
+ if(result.status!==status)throw Error(path+" expected HTTP "+status+", received "+result.status+
+  " ("+(typeof result.data?.error==="string"?result.data.error.slice(0,150):"no detail")+")");
  return result.data;
 }
+// Same-origin Neon Auth sign-in; the cookie is used only to obtain a short-lived signed JWT.
+// No browser-readable cookie is needed and nothing is written to repository configuration.
+async function signedJwt(email,password,label){
+ const login=await fetch(site+"/auth/sign-in/email",{
+  method:"POST",headers:{"content-type":"application/json",origin:site,accept:"application/json"},
+  body:JSON.stringify({email,password}),signal:AbortSignal.timeout(20000),redirect:"manual"
+ });
+ if(!login.ok)throw Error(label+" sign-in failed with HTTP "+login.status+"; check staging account verification and Actions secrets.");
+ const cookie=(login.headers.getSetCookie?.()||[]).map(value=>value.split(";")[0]).filter(Boolean).join("; ");
+ if(!cookie)throw Error(label+" sign-in returned no Neon session cookie.");
+ const session=await fetch(site+"/auth/get-session",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
+ const sessionData=await session.json().catch(()=>null);
+ if(!session.ok||!sessionData?.user)throw Error(label+" session could not be restored.");
+ if(sessionData.user.emailVerified!==true)throw Error(label+" staging email is not verified.");
+ const tokenResponse=await fetch(site+"/auth/token",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
+ const tokenData=await tokenResponse.json().catch(()=>null);
+ const jwt=tokenData?.token??tokenData?.data?.token;
+ if(!tokenResponse.ok||typeof jwt!=="string"||jwt.split(".").length!==3)
+  throw Error(label+" signed JWT could not be obtained; check the Neon Auth proxy.");
+ return jwt;
+}
+
+[env.owner,env.admin]=await Promise.all([
+ signedJwt(required.ownerEmail,required.ownerPassword,"Owner"),
+ signedJwt(required.adminEmail,required.adminPassword,"Administrator")
+]);
+const ownerIdentity=expect(await call("/api/me","owner"),200,"verified owner identity");
+const adminIdentity=expect(await call("/api/me","admin"),200,"verified admin identity");
+if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subject===adminIdentity.subject)
+ throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
+const access=expect(await call("/api/owner/access","owner"),200,"approved owner access");
+if(access.approved!==true)throw Error("Staging shop owner has not been approved by the administrator.");
+expect(await call("/api/owner/orders","admin"),403,"administrator denied owner orders");
+expect(await call("/api/admin/orders","owner"),403,"shop owner denied admin orders");
+expect(await call("/api/admin/shop-applications","owner"),403,"shop owner denied admin applications");
+const applications=expect(await call("/api/admin/shop-applications","admin"),200,"admin application oversight");
+if(!Array.isArray(applications.applications))throw Error("Admin cannot list shop applications.");
+const shops=expect(await call("/api/owner/shops","owner"),200,"owner shops");
+if(!Array.isArray(shops.shops))throw Error("Owner dashboard shop listing is invalid.");
+for(const shop of shops.shops.filter(value=>value.approved===true)){
+ const data=expect(await call("/api/owner/shops/"+encodeURIComponent(shop.id)+"/menu","owner"),200,"owner menu");
+ const available=(data.items||[]).find(item=>item.available===true&&item.id);
+ if(available){env.shop=shop.id;env.menu=available.id;break;}
+}
+if(!env.shop||!env.menu)throw Error("Verified staging owner needs one approved shop with an available priced menu item.");
+console.log("PASS: real signed owner/admin sessions, distinct roles, approved shop and live menu; proceeding with test-flagged orders.");
 const health=expect(await call("/api/health"),200,"health");
 if(health.ok!==true||health.backend!=="neon")throw Error("Staging API is not connected to Neon");
 const payload=()=>({
@@ -51,12 +111,9 @@ const changed=expect(await call("/api/orders","customer","POST",{...original,ite
 if(!changed.error)throw Error("Changed idempotency payload did not return an error");
 const ownerOrders=expect(await call("/api/owner/orders","owner"),200,"owner orders");
 if(!ownerOrders.orders?.some(o=>o.id===orderId)||!ownerOrders.orders?.some(o=>o.id===secondOrderId))throw Error("Owner cannot see the shop's new orders");
-const otherOwnerOrders=expect(await call("/api/owner/orders","otherOwner"),200,"other owner orders");
-if(otherOwnerOrders.orders?.some(o=>o.id===orderId||o.id===secondOrderId))throw Error("Other owner can see this shop's orders");
 expect(await call("/api/orders/"+orderId,"otherCustomer"),403,"other customer tracking");
-expect(await call("/api/orders/"+orderId,"otherOwner"),403,"other owner tracking");
 expect(await call("/api/owner/orders/"+orderId+"/status","customer","PATCH",{status:"accepted",note:"guest must not update status"}),401,"customer status update");
-expect(await call("/api/owner/orders/"+orderId+"/status","otherOwner","PATCH",{status:"accepted",note:"other owner must not update status"}),404,"other owner status update");
+expect(await call("/api/owner/orders/"+orderId+"/status","admin","PATCH",{status:"accepted",note:"admin must not update owner status"}),403,"admin denied owner status update");
 for(const status of ["accepted","preparing","ready_for_collection","completed"]){
  expect(await call("/api/owner/orders/"+orderId+"/status","owner","PATCH",{status,note:"Automated staging status test"}),200,"owner status "+status);
  const tracked=expect(await call("/api/orders/"+orderId,"customer"),200,"customer tracking "+status);
@@ -87,4 +144,4 @@ if(rejectedTrack.order?.status!=="rejected")throw Error("Rejected order status d
 expect(await call("/api/orders/"+rejectedId,"customer"),403,"other guest rejected-order isolation");
 for(const route of ["/api/owner/orders","/api/admin/orders"])
  expect(await call(route,null),401,"anonymous "+route);
-console.log("PASS: guest ordering, idempotency, owner isolation, status transitions, customer tracking, notifications, admin oversight, rejection flow and paused commission");
+console.log("PASS: REAL_DEV_INTEGRATION signed owner/admin authentication, guest ordering, idempotency, strict role isolation, order statuses, customer tracking, notifications, admin oversight, rejection flow and paused commission");
