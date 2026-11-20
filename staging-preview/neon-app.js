@@ -9,11 +9,33 @@ let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
+let loadAdminOrders=async()=>{};
 let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
-function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});if(!dashboardAccess){$("notificationList")?.replaceChildren();if($("unread"))$("unread").textContent="Sign in to see notifications.";if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"}}
+function showDashboardPanels(allowed){
+  dashboardAccess=Boolean(allowed);
+  document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
+  if(!dashboardAccess){
+    if($("manageShopDialog")?.open)$("manageShopDialog").close();
+    $("notificationList")?.replaceChildren();
+    if($("unread"))$("unread").textContent="Sign in to see notifications.";
+    if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications";
+    if($("adminOrderList"))$("adminOrderList").replaceChildren();
+    if($("adminOrderCount"))$("adminOrderCount").textContent="Sign in to view the latest orders.";
+  }
+}
+function showAccountActions(signedIn){
+  if($("signedInAccountActions"))$("signedInAccountActions").hidden=!signedIn;
+  if($("signin"))$("signin").hidden=Boolean(signedIn);
+  if($("verificationHelp"))$("verificationHelp").hidden=Boolean(signedIn);
+  if(!signedIn){
+    if($("passwordResetFields"))$("passwordResetFields").hidden=true;
+    if($("togglePasswordReset"))$("togglePasswordReset").setAttribute("aria-expanded","false");
+  }
+}
+
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -38,16 +60,19 @@ async function api(path,method="GET",body,publicRoute=false){const headers={"con
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
   showDashboardPanels(false);
+  showAccountActions(false);
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
   if(!r.data?.user){$("identity").textContent="Not signed in";return}
-  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
+  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);showAccountActions(true);$("identity").textContent=r.data.user.email;return}
   if(r.data.user.emailVerified===false){showDashboardPanels(false);$("identity").textContent="Email verification required. Send a verification code and verify your email before using this dashboard.";return}
   try{
     const me=await api("/api/me");
     const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
     const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
+    showAccountActions(allowed);
+    if(allowed&&r.data.user.email&&!$("email").value)$("email").value=r.data.user.email;
     $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
     const message=String(e?.message||"please sign in again.");
@@ -86,6 +111,7 @@ $("signin").addEventListener("submit",e=>{
       await showIdentity();
       throw Error("This account is not authorized as an administrator.");
     }else{
+      if(role==="admin")await loadAdminOrders(false);
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
@@ -94,7 +120,7 @@ $("signin").addEventListener("submit",e=>{
 
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{
-  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();
+  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("emailVerificationCode")?.value.trim();
   if(!email||!otp)throw Error("Enter your email and verification code");
   const r=await auth.emailOtp.verifyEmail({email,otp});
   if(r.error)throw Error(r.error.message);
@@ -104,13 +130,19 @@ bind("verifyEmail",async()=>{
   out("Email verified. Please sign in with your password. Owner access remains subject to administrator approval.");
 });
 bind("forgotPassword",async()=>{
-  const email=required("email","Email address").toLowerCase();
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
   const r=await auth.forgetPassword.emailOtp({email});
   if(r?.error)throw Error(r.error.message);
   out("If an account exists for this email, a password reset code has been sent. Enter the code, choose a new password and press Set new password.");
 });
 bind("completePasswordReset",async()=>{
-  const email=required("email","Email address").toLowerCase();
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
   const otp=required("verificationCode","Password reset code");
   const password=required("newPassword","New password");
   if(password.length<12)throw Error("Your new password must contain at least 12 characters.");
@@ -121,6 +153,14 @@ bind("completePasswordReset",async()=>{
   try{await auth.signOut()}catch{}
   await showIdentity();
   out("Password changed successfully. Sign in with your new password.");
+});
+$("togglePasswordReset")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with your authorized account to reset its password.");
+  const fields=$("passwordResetFields");
+  const expanded=fields.hidden;
+  fields.hidden=!expanded;
+  $("togglePasswordReset").setAttribute("aria-expanded",String(expanded));
+  if(expanded)$("forgotPassword").focus();
 });
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
 $("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
