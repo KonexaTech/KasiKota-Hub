@@ -91,6 +91,7 @@ function apiResponse(path,method,body){
   assert.ok(app,"Mock application must exist");app.status=body.status;return {ok:true};
  }
  if(path==="/api/admin/orders")return {orders:[order]};
+ if(path==="/api/admin/commission")return {commissionPaused:true,rateCents:50,thresholdCents:2000,eligibleCompletedOrders:1,excludedTestOrders:2,estimatedCommissionCents:50,remainingToThresholdCents:1950,collectedCommissionCents:null,shops:[{shopId:uuids.shop,shopName:"Kota Audit Test Shop",eligibleOrders:1,estimatedCommissionCents:50}]};
  if(path==="/api/notifications")return {notifications};
  if(path==="/api/notifications/"+uuids.notif+"/read"&&method==="PATCH"){notifications[0].read_at="2026-11-19T00:00:00Z";return {ok:true};}
  if(path==="/api/shop-applications"&&method==="POST")return {application:{id:uuids.appApprove,status:"pending"}};
@@ -157,8 +158,10 @@ try{
  await owner.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
  assert.equal(await owner.locator("#openNotifications").isVisible(),true);
  await owner.locator("#openNotifications").click();
- await owner.waitForFunction(()=>window.scrollY>0,null,{timeout:3000});
+ assert.equal(await owner.locator("#notificationsPanel").isVisible(),true);
  assert.match(await owner.locator("#openNotifications").innerText(),/Notifications/);
+ await owner.locator("#closeNotifications").click();
+ assert.equal(await owner.locator("#notificationsPanel").isVisible(),false);
  assert.equal(await owner.locator("#manageShopDialog").isVisible(),false);
  await owner.locator("#manageShopButton").click();
  assert.equal(await owner.locator("#manageShopDialog").isVisible(),true);
@@ -174,6 +177,8 @@ try{
  assert.equal(menu[0].price_cents,2600);
  await owner.locator("#closeManageShop").click();
  assert.equal(await owner.locator("#manageShopDialog").isVisible(),false);
+ await owner.locator("#openCustomerOrders").click();
+ assert.equal(await owner.locator("#customerOrdersDialog").isVisible(),true);
  await owner.locator("#myOrders").click();
  await resultContains(owner,"orders");
  await owner.locator("#orderItems").click();
@@ -181,13 +186,18 @@ try{
  await owner.locator("#updateStatus").click();
  await resultContains(owner,"Status saved");
  assert.equal(order.status,"accepted");
+ await owner.locator("#closeCustomerOrders").click();
+ assert.equal(await owner.locator("#customerOrdersDialog").isVisible(),false);
+ await owner.locator("#openDashboardNotifications").click();
+ assert.equal(await owner.locator("#notificationsPanel").isVisible(),true);
  await owner.locator("#notifications").click();
  assert.match(await owner.locator("#notificationList").innerText(),/New test order/);
  assert.match(await owner.locator("#notificationList").innerText(),/Mock only/);
  await owner.locator("#notificationList button").click();
  await resultContains(owner,"Notification marked as read");
  assert.match(await owner.locator("#notificationList").innerText(),/Read/);
- results.push("owner: shops, editing, menu, orders, status and notifications passed (mocked API)");
+ await owner.locator("#closeNotifications").click();
+ results.push("owner: shop management, customer orders dialog, statuses and Neon notifications passed (mocked API)");
  await authActions(owner,"owner");
  await owner.close();
 
@@ -195,8 +205,9 @@ try{
  await admin.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
  assert.equal(await admin.locator("#openNotifications").isVisible(),true);
  await admin.locator("#openNotifications").click();
- await admin.waitForFunction(()=>window.scrollY>0,null,{timeout:3000});
+ assert.equal(await admin.locator("#notificationsPanel").isVisible(),true);
  assert.match(await admin.locator("#openNotifications").innerText(),/Notifications/);
+ await admin.locator("#closeNotifications").click();
  await admin.locator("#adminOverview").click();
  await resultContains(admin,"Administrator dashboard loaded");
  await admin.locator("#applications").click();
@@ -208,6 +219,8 @@ try{
  await admin.locator("#reject").click();
  await resultContains(admin,"Shop application rejected");
  assert.equal(applications.filter(x=>x.status==="pending").length,0);
+ await admin.locator("#openCustomerOrders").click();
+ assert.equal(await admin.locator("#customerOrdersDialog").isVisible(),true);
  await admin.locator("#orders").click();
  await resultContains(admin,"TEST-LOCAL-001");
  assert.match(await admin.locator("#adminOrderList").innerText(),/TEST-LOCAL-001/);
@@ -215,13 +228,25 @@ try{
  await admin.locator("#adminOrderList .admin-order-card button").click();
  await admin.locator("#adminOrderList .admin-order-items").waitFor({state:"visible"});
  assert.match(await admin.locator("#adminOrderList").innerText(),/Classic Kota/);
+ await admin.locator("#closeCustomerOrders").click();
+ await admin.locator("#openDashboardNotifications").click();
+ assert.equal(await admin.locator("#notificationsPanel").isVisible(),true);
  await admin.locator("#notifications").click();
  assert.match(await admin.locator("#notificationList").innerText(),/New test order/);
  assert.match(await admin.locator("#notificationList").innerText(),/Read/);
  await admin.locator("#notificationId").fill(uuids.notif);
  await admin.locator("#markRead").click();
  await resultContains(admin,"Notification marked as read");
- results.push("admin: overview, approval, rejection, orders and notifications passed (mocked API)");
+ await admin.locator("#closeNotifications").click();
+ await admin.locator("#openCommission").click();
+ assert.equal(await admin.locator("#commissionDialog").isVisible(),true);
+ await admin.waitForFunction(()=>document.getElementById("commissionEstimate")?.textContent==="R0.50");
+ assert.match(await admin.locator("#commissionShopList").innerText(),/Kota Audit Test Shop/);
+ assert.match(await admin.locator("#commissionStatus").innerText(),/Collection paused/);
+ await admin.locator("#refreshCommission").click();
+ await resultContains(admin,"Commission estimates refreshed");
+ await admin.locator("#closeCommission").click();
+ results.push("admin: application approvals, customer orders dialog, notifications and R0.50 Neon commission ledger passed (mocked API)");
  await authActions(admin,"admin");
  await admin.close();
 

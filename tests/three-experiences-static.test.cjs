@@ -77,7 +77,7 @@ test("readable notifications appear inside both dashboards, with one-tap read an
    assert.match(page,/id="notificationList"/);
    assert.match(page,/id="notifications"/);
    assert.match(page,/id="markRead"/);
-   assert.match(page,/neon-app\.js\?v=20261120-professional-dashboards-v1/);
+   assert.match(page,/neon-app\.js\?v=20261120-dialogs-commission-icon-v1/);
  }
  assert.match(client,/renderNotifications\(notifications\)/);
  assert.match(client,/notification\.title/);
@@ -95,11 +95,13 @@ test("a visible Notifications shortcut is first in owner and admin navigation an
  const client=fs.readFileSync("staging-preview/neon-app.js","utf8");
  for(const page of [owner,admin]){
    assert.match(page,/<nav aria-label="Dashboard navigation"><button id="openNotifications"/);
-   assert.match(page,/id="notificationsPanel" data-restricted-panel hidden/);
+   assert.match(page,/<dialog id="notificationsPanel" class="kc-dialog/);
+   assert.match(page,/id="openDashboardNotifications"[^>]*aria-haspopup="dialog"/);
+   assert.match(page,/id="closeNotifications"/);
    assert.match(page,/id="accountPanel"/);
  }
  assert.match(client,/shortcut\.addEventListener\("click"/);
- assert.match(client,/\$\("notificationsPanel"\)\.scrollIntoView/);
+ assert.match(client,/notificationsDialog\.showModal\(\)/);
  assert.match(client,/\$\("accountPanel"\)\.scrollIntoView/);
  assert.match(client,/openNotifications"\)\.textContent="🔔 Notifications"/);
 });
@@ -143,4 +145,46 @@ test("Neon-backed notifications stay in place with no Firebase SDK",()=>{
  assert.match(client,/setInterval\(\(\)=>pollNotifications\(false\)/);
  assert.doesNotMatch(client,/firebase-messaging|firebase\/app/);
  assert.doesNotMatch(owner+admin,/firebase-messaging|google-services/);
+});
+
+test("owner and admin Customer Orders are accessible in-dashboard pop-up dialogs",()=>{
+ const script=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ for(const page of [owner,admin]){
+   assert.match(page,/id="openCustomerOrders"[^>]*aria-haspopup="dialog"/);
+   assert.match(page,/<dialog id="customerOrdersDialog"/);
+   assert.match(page,/id="closeCustomerOrders"/);
+   assert.match(page,/id="dashboardNotificationsCard" data-restricted-panel hidden/);
+   assert.doesNotMatch(page,/Neon development staging only|Built by|Created by|Developed by/i);
+ }
+ assert.match(script,/ordersDialog\.showModal\(\)/);
+ assert.match(script,/notificationsDialog\.showModal\(\)/);
+ assert.match(script,/for\(const id of \["manageShopDialog","customerOrdersDialog","notificationsPanel","commissionDialog"\]\)/);
+});
+test("administrator commission is role-protected and excludes completed test orders without collecting money",()=>{
+ const script=fs.readFileSync("staging-preview/neon-app.js","utf8");
+ assert.match(admin,/id="adminCommissionPanel" data-restricted-panel hidden/);
+ assert.match(admin,/id="commissionPreviewAmount"/);
+ assert.match(admin,/<dialog id="commissionDialog"/);
+ assert.match(admin,/id="commissionShopList"/);
+ assert.match(script,/api\("\/api\/admin\/commission"\)/);
+ assert.match(backend,/path==="\/api\/admin\/commission"/);
+ assert.match(backend,/if\(!await isNeonAdmin\(env,withDb,subject\)\)/);
+ assert.match(backend,/status='completed' AND test_order IS NOT TRUE/);
+ assert.match(backend,/rateCents=50,thresholdCents=2000/);
+ assert.match(backend,/commissionPaused:true/);
+ assert.match(backend,/collectedCommissionCents:null/);
+});
+test("branded launcher preserves staging application ID but displays Kota Connect and uses existing genuine icon",()=>{
+ const config=JSON.parse(fs.readFileSync("android-staging/capacitor.config.json","utf8"));
+ const workflow=fs.readFileSync(".github/workflows/build-neon-staging-apk.yml","utf8");
+ const iconScript=fs.readFileSync("android-staging/scripts/apply-launcher-icon.mjs","utf8");
+ const icon=fs.readFileSync("icon-512.png");
+ assert.equal(config.appId,"za.co.kotaconnect.staging");
+ assert.equal(config.appName,"Kota Connect");
+ assert.equal(icon.readUInt32BE(16),512);
+ assert.equal(icon.readUInt32BE(20),512);
+ assert.match(workflow,/node android-staging\/scripts\/apply-launcher-icon\.mjs/);
+ assert.match(iconScript,/ic_launcher_round\.png/);
+ assert.match(iconScript,/ic_launcher\.png/);
+ assert.match(iconScript,/mipmap-anydpi-v26/);
 });

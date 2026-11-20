@@ -28,6 +28,8 @@ jobs:
         run: |
           sed -i 's/minSdkVersion = [0-9][0-9]*/minSdkVersion = 26/' variables.gradle
           grep -q 'minSdkVersion = 26' variables.gradle
+      - name: Apply Kota Connect branded Android launcher icon
+        run: node android-staging/scripts/apply-launcher-icon.mjs
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
@@ -58,6 +60,11 @@ jobs:
             if [ "$attempt" -eq 3 ]; then exit 1; fi
             sleep $((attempt * 45))
           done
+      - name: Verify branded Android APK was generated
+        run: |
+          test -s android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          test -s android-staging/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          test ! -e android-staging/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:

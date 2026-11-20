@@ -76,6 +76,31 @@ export async function neonApi(request,env,withDb){
           collectedCommissionCents:null,commissionCollectionStatus:"Commission is paused for launch. No commission is charged or collected."};
     }));
   }
+  if(method==="GET"&&path==="/api/admin/commission"){
+    if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);
+    return json(await withDb(env,async db=>{
+      const rateCents=50,thresholdCents=2000;
+      // Estimates only. A completed non-test order qualifies; no payments or collection are triggered.
+      const totals=(await db.query("SELECT count(*) FILTER (WHERE status='completed' AND test_order IS NOT TRUE)::int AS eligible_orders, count(*) FILTER (WHERE status='completed' AND test_order IS TRUE)::int AS excluded_test_orders FROM kc_orders")).rows[0];
+      const shops=(await db.query("SELECT s.id AS shop_id,s.name AS shop_name,count(o.id) FILTER (WHERE o.status='completed' AND o.test_order IS NOT TRUE)::int AS eligible_orders FROM kc_shops s LEFT JOIN kc_orders o ON o.shop_id=s.id GROUP BY s.id,s.name ORDER BY eligible_orders DESC,s.name ASC LIMIT 500")).rows;
+      const eligibleCompletedOrders=Number(totals.eligible_orders)||0;
+      const estimatedCommissionCents=eligibleCompletedOrders*rateCents;
+      return {
+        commissionPaused:true,collectionStatus:"Paused for private testing. Estimates are not collected payments.",
+        rateCents,thresholdCents,eligibleCompletedOrders,
+        excludedTestOrders:Number(totals.excluded_test_orders)||0,
+        estimatedCommissionCents,
+        remainingToThresholdCents:Math.max(0,thresholdCents-estimatedCommissionCents),
+        thresholdReached:estimatedCommissionCents>=thresholdCents,
+        collectedCommissionCents:null,
+        shops:shops.map(shop=>({
+          shopId:shop.shop_id,shopName:shop.shop_name,
+          eligibleOrders:Number(shop.eligible_orders)||0,
+          estimatedCommissionCents:(Number(shop.eligible_orders)||0)*rateCents
+        }))
+      };
+    }));
+  }
   if(method==="GET"&&path==="/api/admin/orders"){if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);return json({orders:await withDb(env,async db=>(await db.query("SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.created_at,o.total_cents,o.customer_name,o.area,o.fulfillment_type FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id ORDER BY o.created_at DESC LIMIT 200")).rows)})}
   if(method==="GET"&&path==="/api/notifications")return json({notifications:await withDb(env,async db=>(await db.query("SELECT n.id,n.order_id,n.kind,n.title,n.body,n.read_at,n.created_at,o.order_number,s.name AS shop_name FROM kc_notifications n LEFT JOIN kc_orders o ON o.id=n.order_id LEFT JOIN kc_shops s ON s.id=o.shop_id WHERE n.recipient_subject=$1 ORDER BY n.created_at DESC LIMIT 100",[subject])).rows)});
   const readNotification=/^\/api\/notifications\/([0-9a-f-]{36})\/read$/.exec(path);

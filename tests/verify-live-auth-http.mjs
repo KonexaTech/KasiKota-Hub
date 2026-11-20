@@ -1,6 +1,6 @@
 // Probe deployed staging routes and verify the actual cache-busted client.
 const base="https://kota-connect-neon-staging.pages.dev";
-const version="20261120-professional-dashboards-v1";
+const version="20261120-dialogs-commission-icon-v1";
 const paths=["/auth/get-session","/auth/token","/api/health","/neon-app.js?v="+version,"/neon-owner","/neon-admin","/neon-customer"];
 const bodies=new Map();
 for(const path of paths){
