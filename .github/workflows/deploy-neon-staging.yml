@@ -123,19 +123,7 @@ jobs:
         run: |
           node tests/verify-browser-owner-login.mjs
           node tests/verify-browser-all-buttons.mjs
-      - name: Run full authenticated customer-owner-admin integration when credentials exist
-        env:
-          KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
-          KOTA_TEST_CUSTOMER_TOKEN: ${{ secrets.KOTA_TEST_CUSTOMER_TOKEN }}
-          KOTA_TEST_OTHER_CUSTOMER_TOKEN: ${{ secrets.KOTA_TEST_OTHER_CUSTOMER_TOKEN }}
-          KOTA_TEST_OWNER_TOKEN: ${{ secrets.KOTA_TEST_OWNER_TOKEN }}
-          KOTA_TEST_OTHER_OWNER_TOKEN: ${{ secrets.KOTA_TEST_OTHER_OWNER_TOKEN }}
-          KOTA_TEST_ADMIN_TOKEN: ${{ secrets.KOTA_TEST_ADMIN_TOKEN }}
-          KOTA_TEST_SHOP_ID: ${{ secrets.KOTA_TEST_SHOP_ID }}
-          KOTA_TEST_MENU_ITEM_ID: ${{ secrets.KOTA_TEST_MENU_ITEM_ID }}
+      - name: Report separate mandatory real owner-admin acceptance
         run: |
-          if [ -n "$KOTA_TEST_CUSTOMER_TOKEN" ] && [ -n "$KOTA_TEST_OTHER_CUSTOMER_TOKEN" ] && [ -n "$KOTA_TEST_OWNER_TOKEN" ] && [ -n "$KOTA_TEST_OTHER_OWNER_TOKEN" ] && [ -n "$KOTA_TEST_ADMIN_TOKEN" ] && [ -n "$KOTA_TEST_SHOP_ID" ] && [ -n "$KOTA_TEST_MENU_ITEM_ID" ]; then
-            node worker/test/release-gates.integration.mjs
-          else
-            echo "SKIPPED: dedicated guest, verified owner/admin and staging shop test credentials are not all configured"
-          fi
+          echo "::notice::Full real owner-admin acceptance is separately REQUIRED before closed testing. A successful staging deploy alone is not sufficient."
+          echo "::notice::See separate 'Full Kota Connect owner-admin staging acceptance' workflow for the authoritative pass/fail result."
