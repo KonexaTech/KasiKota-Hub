@@ -262,7 +262,7 @@ bind("saveShopDetails",async()=>{
   out("Shop details saved. Approved status and existing orders were not changed.");
 });
 
-bind("myShops",async()=>{const r=await api("/api/owner/shops");editableShops=r.shops;option($("shop"),r.shops,x=>x.name);showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
+bind("myShops",async()=>{const selected=$("shop").value;const r=await api("/api/owner/shops");editableShops=Array.isArray(r.shops)?r.shops:[];option($("shop"),editableShops,x=>x.name);if(editableShops.some(shop=>shop.id===selected))$("shop").value=selected;else if(editableShops.length===1)$("shop").value=editableShops[0].id;showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(editableShops.length+" shops found. Select your shop and press View menu.");});
 bind("myMenu",viewOwnerMenu);
 bind("saveMenu",async()=>{
   const shopId=required("shop","Shop");
