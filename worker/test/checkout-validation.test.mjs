@@ -49,6 +49,8 @@ test('guest checkout prices come from server menu and preserve delivery details 
   assert.equal(inserted[11],true,'development orders must remain test orders');
   assert.equal(calls[0],'BEGIN');
   assert.equal(calls.at(-1),'COMMIT');
+  const lockIndex=calls.findIndex(sql=>sql.includes('approved=true FOR SHARE'));
+  assert.ok(lockIndex>0 && lockIndex<calls.findIndex(sql=>sql.startsWith('INSERT INTO kc_orders(')), 'approved shop lock must precede persistence inside BEGIN/COMMIT');
   assert.equal(calls.filter(sql=>sql.startsWith('INSERT INTO kc_order_items')).length,1);
 });
 
