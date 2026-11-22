@@ -91,7 +91,7 @@ $("signin").addEventListener("submit",e=>{
   e.preventDefault();
   if(signInPending)return;
   signInPending=true;
-  const submit=$("signin").querySelector('button[type="submit"]');
+  const submit=$("signin").querySelector('button[type="submit"],button:not([type])');
   const original=submit?.textContent;
   if(submit){submit.disabled=true;submit.textContent="Signing in…";submit.setAttribute("aria-busy","true")}
   out("Signing in…");
