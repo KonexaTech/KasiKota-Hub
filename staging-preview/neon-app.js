@@ -11,6 +11,7 @@ let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
 let loadAdminOrders=async()=>{};
 let loadAdminCommission=async()=>{};
+let clearAdminShopDecisions=()=>{};
 let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
@@ -60,9 +61,10 @@ async function apiJwt(){
   const reason=typeof result?.error?.message==="string"?result.error.message:typeof result?.message==="string"?result.message:null;
   throw Error("Neon JWT endpoint failed ("+state+")"+(reason?": "+reason:""));
 }
-async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||"Request failed");return data}
+async function api(path,method="GET",body,publicRoute=false){const headers={"content-type":"application/json"};if(!publicRoute){headers.authorization="Bearer "+await apiJwt()}const response=await fetch(API+path,{method,headers,body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok){const error=Error(data.error||"Request failed");error.status=response.status;throw error}return data}
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
+  clearAdminShopDecisions();
   showDashboardPanels(false);
   showAccountActions(false);
   const r=await auth.getSession();
@@ -370,7 +372,14 @@ bind("updateStatus",async()=>{
 });
 }
 if(role==="admin"){
-bind("adminOverview",async()=>{
+const pendingShopDecisions=new Map();
+clearAdminShopDecisions=()=>pendingShopDecisions.clear();
+function newAdminRequestId(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=[...bytes].map(x=>x.toString(16).padStart(2,"0")).join("");return hex.slice(0,8)+"-"+hex.slice(8,12)+"-"+hex.slice(12,16)+"-"+hex.slice(16,20)+"-"+hex.slice(20);
+}
+async function loadAdminOverview(){
   const data=await api("/api/admin/overview");
   $("registeredShops").textContent=String(data.shopCount);
   $("approvedShops").textContent=String(data.approvedShopCount);
@@ -378,15 +387,50 @@ bind("adminOverview",async()=>{
   $("commissionDue").textContent=data.commissionPaused?"Paused for launch":"R"+(data.estimatedCommissionCents/100).toFixed(2);
   $("commissionCollected").textContent=data.commissionPaused?"Not collected during launch":(data.collectedCommissionCents===null?"Not yet verifiable":"R"+(data.collectedCommissionCents/100).toFixed(2));
   $("commissionNotice").textContent=data.commissionCollectionStatus||"Commission collection reports require confirmed payment records.";
+  let managementAvailable=false;
+  try{managementAvailable=(await api("/api/admin/shop-management")).available===true}catch{/* Existing dashboards remain usable before management activation. */}
   const list=$("adminShopList");list.replaceChildren();
   for(const shop of data.shops||[]){
     const entry=document.createElement("div");entry.style.cssText="border:1px solid #d8e6dc;border-radius:12px;padding:12px";
     const title=document.createElement("strong");title.textContent=shop.name+" — "+(shop.approved?"Approved":"Not approved");
     const address=document.createElement("p");address.textContent=[shop.area,shop.address,shop.phone].filter(Boolean).join(" · ");
-    entry.append(title,address);list.append(entry);
+    entry.append(title,address);
+    if(managementAvailable){
+      const action=document.createElement("button");action.type="button";
+      action.textContent=pendingShopDecisions.has(shop.id)?"Retry decision":shop.approved?"Suspend shop":"Restore approval";
+      action.setAttribute("aria-label",action.textContent+" for "+shop.name);
+      action.onclick=safe(async()=>{
+        let decision=pendingShopDecisions.get(shop.id);
+        if(!decision){
+          const reason=window.prompt((shop.approved?"Suspend":"Restore approval for")+" "+shop.name+". Enter the reason (required):");
+          if(reason===null)return;
+          if(!reason.trim()||reason.length>500)throw Error("Enter a reason between 1 and 500 characters.");
+          decision={requestId:newAdminRequestId(),approved:!shop.approved,expectedCurrentApproved:shop.approved,reason:reason.trim()};pendingShopDecisions.set(shop.id,decision);
+        }
+        action.disabled=true;
+        try{
+          await api("/api/admin/shops/"+encodeURIComponent(shop.id)+"/approval","PATCH",decision);
+          pendingShopDecisions.delete(shop.id);await loadAdminOverview();out("Shop decision recorded. Dashboard refreshed from the saved state.");
+        }catch(error){
+          if(error.status>=400&&error.status<500){pendingShopDecisions.delete(shop.id);await loadAdminOverview().catch(()=>{});}
+          throw error;
+        }finally{if(action.isConnected){action.disabled=false;action.textContent=pendingShopDecisions.has(shop.id)?"Retry decision":shop.approved?"Suspend shop":"Restore approval";action.setAttribute("aria-label",action.textContent+" for "+shop.name);}}
+      });
+      const historyButton=document.createElement("button");historyButton.type="button";historyButton.textContent="Approval history";historyButton.setAttribute("aria-label","View approval history for "+shop.name);
+      const history=document.createElement("div");history.setAttribute("role","status");
+      historyButton.onclick=safe(async()=>{
+        const result=await api("/api/admin/shops/"+encodeURIComponent(shop.id)+"/approval-events");
+        history.replaceChildren();
+        for(const event of result.events||[]){const text=document.createElement("p");text.textContent=new Date(event.created_at).toLocaleString()+" — "+(event.approved?"Approved":"Suspended")+" — "+event.reason+" — "+event.actor_subject;history.append(text);}
+        if(!history.childNodes.length)history.textContent="No approval history recorded yet.";
+      });
+      entry.append(action,historyButton,history);
+    }
+    list.append(entry);
   }
   out("Administrator dashboard loaded. Registered shops: "+data.shopCount);
-});
+}
+bind("adminOverview",loadAdminOverview);
 async function loadApplications(){
   const data=await api("/api/admin/shop-applications");
   const applications=Array.isArray(data.applications)?data.applications:[];

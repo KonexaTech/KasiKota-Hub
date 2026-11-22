@@ -19,6 +19,7 @@ jobs:
         run: |
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
+          node --check worker/src/admin-shop-management.js
           node --check worker/src/neon-auth.js
           node --check worker/src/guest-auth.js
           node --input-type=module --check < staging-preview/neon-app.js
@@ -43,7 +44,7 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
-          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs worker/test/prepare-staging-role-fixtures.test.mjs
+          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/admin-shop-management.test.mjs worker/test/admin-shop-embedded.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs worker/test/prepare-staging-role-fixtures.test.mjs
           node --test worker/test/notifications-bulk.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
         run: |
@@ -79,4 +80,4 @@ jobs:
       - name: Exercise checkout lock against an independent concurrent writer
         env:
           KOTA_LOCK_TEST_DATABASE_URL: postgresql://kota_test@127.0.0.1:5432/kota_lock_test
-        run: node --test --test-concurrency=1 worker/test/checkout-shop-concurrency.test.mjs worker/test/ordering-postgres.test.mjs
+        run: node --test --test-concurrency=1 worker/test/checkout-shop-concurrency.test.mjs worker/test/ordering-postgres.test.mjs worker/test/admin-shop-postgres.test.mjs

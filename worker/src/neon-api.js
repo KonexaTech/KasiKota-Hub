@@ -1,6 +1,7 @@
 import { verifiedNeonSubject, isNeonAdmin } from "./neon-auth.js";
 import { isOwnerOnlyRoute } from "./role-policy.js";
 import { guestRouteAllowed, verifiedGuestSubject } from "./guest-auth.js";
+import { adminShopManagement } from "./admin-shop-management.js";
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","cache-control":"no-store"}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
@@ -28,6 +29,8 @@ export async function neonApi(request,env,withDb){
     if(!account||account.email_verified!==true)return json({error:"Email verification required. Verify your email before continuing."},403);
     if(account.banned&&account.ban_active)return json({error:"Account is suspended."},403);
   }
+  const shopManagement=await adminShopManagement(request,env,withDb,subject);
+  if(shopManagement)return shopManagement;
   // Admin accounts must never act as shop owners, even by calling the API directly.
   if(isOwnerOnlyRoute(path)&&await isNeonAdmin(env,withDb,subject))return json({error:"Administrator accounts cannot use shop-owner functions. Sign in using a separate owner account."},403);
   if(path.startsWith("/api/owner/")&&path!=="/api/owner/access"){

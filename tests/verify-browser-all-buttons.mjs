@@ -16,6 +16,8 @@ const uuids={
  appApprove:"55555555-5555-4555-8555-555555555555",
  appReject:"66666666-6666-4666-8666-666666666666"
 };
+let managementEnabled=false,loseDecisionResponse=false;
+const approvalEvents=[];
 const shop={id:uuids.shop,name:"Kota Audit Test Shop",area:"Newcastle CBD",address:"Mock Street",phone:"0700000000",approved:true};
 let menu=[{id:uuids.item,name:"Classic Kota",price_cents:2500,available:true}];
 let order={id:uuids.order,order_number:"TEST-LOCAL-001",status:"pending",fulfillment_type:"pickup",customer_name:"Mock Customer",total_cents:2500,owner_note:null};
@@ -88,7 +90,14 @@ function apiResponse(path,method,body){
   order={...order,status:"pending",fulfillment_type:body.fulfillmentType,customer_name:body.customerName,total_cents:menu[0].price_cents*body.items[0].quantity+(body.fulfillmentType==="delivery"?500:0)};
   return {order};
  }
- if(path==="/api/admin/overview")return {shopCount:1,approvedShopCount:1,applications:[{status:"pending",count:applications.filter(x=>x.status==="pending").length}],shops:[shop],commissionPaused:true,estimatedCommissionCents:0,collectedCommissionCents:null,commissionCollectionStatus:"Commission paused"};
+ if(path==="/api/admin/shop-management")return {available:managementEnabled};
+ if(path===`/api/admin/shops/${uuids.shop}/approval`&&method==="PATCH"){
+  const previous=approvalEvents.find(event=>event.request_id===body.requestId);if(previous)return {ok:true,replayed:true,event:previous};
+  assert.equal(body.expectedCurrentApproved,shop.approved);shop.approved=body.approved;
+  const event={id:body.requestId,request_id:body.requestId,approved:body.approved,actor_subject:"fixture-admin",reason:body.reason,created_at:new Date().toISOString()};approvalEvents.push(event);return {ok:true,replayed:false,event};
+ }
+ if(path===`/api/admin/shops/${uuids.shop}/approval-events`)return {events:approvalEvents};
+ if(path==="/api/admin/overview")return {shopCount:1,approvedShopCount:shop.approved?1:0,applications:[{status:"pending",count:applications.filter(x=>x.status==="pending").length}],shops:[shop],commissionPaused:true,estimatedCommissionCents:0,collectedCommissionCents:null,commissionCollectionStatus:"Commission paused"};
  if(path==="/api/admin/shop-applications"&&method==="GET")return {applications};
  if(path.startsWith("/api/admin/shop-applications/")&&path.endsWith("/review")&&method==="PATCH"){
   const id=path.split("/")[4];const app=applications.find(x=>x.id===id);
@@ -120,6 +129,7 @@ async function makePage(role){
   calls.push(role+" "+method+" "+url.pathname);
   try{
      const data=apiResponse(url.pathname,method,body);
+     if(loseDecisionResponse&&method==="PATCH"&&url.pathname.endsWith("/approval")){loseDecisionResponse=false;await route.abort("failed");return;}
      // Verify immediate feedback under slow staging network responses.
      if(url.pathname==="/api/notifications/read-all"||url.pathname==="/api/shops/"+uuids.shop+"/menu")await new Promise(resolve=>setTimeout(resolve,450));
      await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)});
@@ -231,6 +241,23 @@ try{
  await admin.locator("#closeNotifications").click();
  await admin.locator("#adminOverview").click();
  await resultContains(admin,"Administrator dashboard loaded");
+ assert.equal(await admin.getByRole("button",{name:"Suspend shop for "+shop.name,exact:true}).count(),0,"Controls must stay hidden before activation");
+ managementEnabled=true;await admin.locator("#adminOverview").click();await resultContains(admin,"Administrator dashboard loaded");
+ loseDecisionResponse=true;
+ admin.once("dialog",dialog=>dialog.accept("TEST fixture suspension"));
+ await admin.getByRole("button",{name:"Suspend shop for "+shop.name,exact:true}).click();
+ await admin.getByRole("button",{name:"Retry decision for "+shop.name,exact:true}).waitFor();
+ assert.equal(approvalEvents.length,1);assert.equal(shop.approved,false);
+ await admin.getByRole("button",{name:"Retry decision for "+shop.name,exact:true}).click();
+ await admin.getByRole("button",{name:"Restore approval for "+shop.name,exact:true}).waitFor();
+ assert.equal(approvalEvents.length,1,"Lost response retry must retain the original request ID");
+ await admin.getByRole("button",{name:"View approval history for "+shop.name,exact:true}).click();
+ await admin.getByText(/TEST fixture suspension.*fixture-admin/).waitFor();
+ admin.once("dialog",dialog=>dialog.accept("TEST fixture restoration"));
+ await admin.getByRole("button",{name:"Restore approval for "+shop.name,exact:true}).click();
+ await admin.getByRole("button",{name:"Suspend shop for "+shop.name,exact:true}).waitFor();
+ assert.equal(shop.approved,true);assert.equal(approvalEvents.length,2);
+ results.push("admin: activated suspension/resumption, lost-response retry and audit-history controls passed (mocked API)");
  await admin.locator("#applications").click();
  await resultContains(admin,"2 pending");
  await admin.locator("#applicationPicker").selectOption(uuids.appApprove);
