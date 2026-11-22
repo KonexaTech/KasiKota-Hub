@@ -44,6 +44,7 @@ jobs:
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
           node --test worker/test/checkout-validation.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
+          node --test worker/test/notifications-bulk.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
         run: |
           npm install --no-save playwright
