@@ -68,13 +68,8 @@ async function showIdentity(){
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
   if(!r.data?.user){$("identity").textContent="Not signed in";return}
-0 fix/kota-connect-full-audit-20261119
-  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
-  if(r.data.user.emailVerified===false){$("identity").textContent="Email verification required. Send a verification code and verify your email before using this dashboard.";return}
-
   if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);showAccountActions(true);$("identity").textContent=r.data.user.email;return}
   if(r.data.user.emailVerified===false){showDashboardPanels(false);$("identity").textContent="Email verification required. Send a verification code and verify your email before using this dashboard.";return}
- feature/neon-only-cutover
   try{
     const me=await api("/api/me");
     const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
@@ -91,10 +86,6 @@ async function showIdentity(){
     throw e;
   }
 }
- fix/kota-connect-full-audit-20261119
-$("signin").addEventListener("submit",e=>{
-  e.preventDefault();
-
 let signInPending=false;
 $("signin").addEventListener("submit",e=>{
   e.preventDefault();
@@ -104,8 +95,7 @@ $("signin").addEventListener("submit",e=>{
   const original=submit?.textContent;
   if(submit){submit.disabled=true;submit.textContent="Signing in…";submit.setAttribute("aria-busy","true")}
   out("Signing in…");
- feature/neon-only-cutover
-  safe(async()=>{
+  (async()=>{
     const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
     if(r.error)throw Error(r.error.message);
     if(!r.data)throw Error("Sign-in did not return an account");
@@ -117,48 +107,13 @@ $("signin").addEventListener("submit",e=>{
     }
     if(role==="owner"&&dashboardAccess){
       await loadOwnerOrders(false);
- fix/kota-connect-full-audit-20261119
-      out("Signed in. Your shop is approved.");
-    }else if(role==="owner"){
-      await auth.signOut();
-      await showIdentity();
-      out("Your email is verified and your shop application has been submitted. You can sign in to the owner dashboard after the administrator approves your shop.");
-    }else if(role==="admin"&&!dashboardAccess){
-      throw Error("This account is not authorized as an administrator.");
-    }else out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
-  });
-});
-bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
-bind("verifyEmail",async()=>{
-  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();
-  if(!email||!otp)throw Error("Enter your email and verification code");
-  const r=await auth.emailOtp.verifyEmail({email,otp});
-  if(r.error)throw Error(r.error.message);
-  await showIdentity();
-  if(role==="owner"&&!dashboardAccess){
-    await auth.signOut();
-    await showIdentity();
-    out("Email verified. Your shop application is awaiting administrator approval. You can sign in to the owner dashboard after approval.");
-    return;
-  }
-  if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
-  $("registrationStatus")&&($("registrationStatus").textContent="Email verified. Your account is ready for the next approved step.");
-  out(dashboardAccess?"Email verified. Dashboard access confirmed.":"Email verified. You can now sign in with your password.");
-});
-bind("forgotPassword",async()=>{const email=$("email").value.trim();if(!email)throw Error("Enter your email address first");const r=await auth.requestPasswordReset({email,redirectTo:new URL("./neon-reset-password.html",location.href).href});if(r.error)throw Error(r.error.message);out("If this account exists, a recovery email has been sent. Check inbox and spam. The link expires after one hour.")});
-bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
-$("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
-function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
-
       await pollNotifications(true);
       out("Signed in. Your shop is approved.");
     }else if(role==="owner"){
       const identity=$("identity").textContent||"";
       await auth.signOut();
       await showIdentity();
-      if(identity.startsWith("Owner access denied: administrator accounts")){
-        throw Error("Administrator accounts cannot sign in to the shop-owner dashboard.");
-      }
+      if(identity.startsWith("Owner access denied: administrator accounts"))throw Error("Administrator accounts cannot sign in to the shop-owner dashboard.");
       out("Your shop is awaiting administrator approval. You can sign in to the owner dashboard after approval.");
     }else if(role==="admin"&&!dashboardAccess){
       await auth.signOut();
@@ -169,12 +124,11 @@ function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  })().finally(()=>{
+  })().catch(error=>out("Error: "+error.message)).finally(()=>{
     signInPending=false;
     if(submit){submit.disabled=false;submit.textContent=original;submit.removeAttribute("aria-busy")}
   });
 });
-
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{
   const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("emailVerificationCode")?.value.trim();
@@ -235,7 +189,7 @@ function bind(id,fn){
     }
   });
 }
- feature/neon-only-cutover
+
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
@@ -512,15 +466,6 @@ function renderAdminOrders(orders){
     card.append(header,meta,fields,detailButton,detailPanel);list.append(card);
   }
 }
- fix/kota-connect-full-audit-20261119
-bind("notifications",async()=>out(await api("/api/notifications")));
-bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
-async function pollNotifications(){if(document.visibilityState!=="visible"||(role==="owner"||role==="admin")&&!dashboardAccess)return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
-showIdentity().then(async()=>{if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="customer")await refreshCustomerTracking(false);await pollNotifications()}).catch(()=>{});
-setInterval(pollNotifications,20000);
-setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},15000);
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications();if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
-
 loadAdminOrders=async function(announce=true){
   const response=await api("/api/admin/orders");
   const orders=Array.isArray(response.orders)?response.orders:[];
@@ -701,4 +646,3 @@ setInterval(()=>pollNotifications(false).catch(()=>{}),10000);
 setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},10000);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications(true).catch(()=>{});if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
 window.addEventListener("focus",()=>{pollNotifications(true).catch(()=>{})});
- feature/neon-only-cutover
