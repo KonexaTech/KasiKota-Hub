@@ -43,7 +43,7 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
-          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
+          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
         run: |
           npm install --no-save playwright
@@ -78,4 +78,4 @@ jobs:
       - name: Exercise checkout lock against an independent concurrent writer
         env:
           KOTA_LOCK_TEST_DATABASE_URL: postgresql://kota_test@127.0.0.1:5432/kota_lock_test
-        run: node --test worker/test/checkout-shop-concurrency.test.mjs
+        run: node --test --test-concurrency=1 worker/test/checkout-shop-concurrency.test.mjs worker/test/ordering-postgres.test.mjs

@@ -223,10 +223,10 @@ bind("myMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("s
 bind("addMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu","POST",{name:$("itemName").value,priceCents:Math.round(Number($("price").value)*100)})));
 bind("editMenu",async()=>out(await api("/api/owner/shops/"+encodeURIComponent($("shop").value)+"/menu/"+encodeURIComponent($("menuItemId").value),"PATCH",{name:$("editItemName").value,priceCents:Math.round(Number($("editPrice").value)*100),available:$("available").checked})));
 const allowedOwnerTransitions={
-  pending:["accepted","rejected"],
+  pending:["accepted","rejected","delayed"],
   accepted:["preparing","delayed","rejected"],
   preparing:["ready_for_collection","out_for_delivery","delayed"],
-  delayed:["accepted","preparing","ready_for_collection","out_for_delivery","rejected"],
+  delayed:["accepted","rejected"],
   ready_for_collection:["completed"],
   out_for_delivery:["completed"]
 };
