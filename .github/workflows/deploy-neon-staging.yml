@@ -57,7 +57,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "74fdd987dfadfdbb7322d9fc7f705499"
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing staging Cloudflare token"; exit 1; }
-          npx wrangler deploy
+          npx wrangler deploy --var "KOTA_SOURCE_COMMIT:$GITHUB_SHA"
       - name: Verify live staging password recovery route responses
         run: |
           node --input-type=module <<'NODE'
