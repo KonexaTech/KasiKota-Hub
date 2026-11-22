@@ -57,7 +57,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "74fdd987dfadfdbb7322d9fc7f705499"
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing staging Cloudflare token"; exit 1; }
-          npx wrangler deploy
+          npx wrangler deploy --var "KOTA_SOURCE_COMMIT:$GITHUB_SHA"
       - name: Verify live staging password recovery route responses
         run: |
           node --input-type=module <<'NODE'
@@ -103,7 +103,7 @@ jobs:
         run: |
           for attempt in $(seq 1 30); do
             page="$(curl --silent --show-error --fail https://kota-connect-neon-staging.pages.dev/neon-admin || true)"
-            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261120-dialogs-commission-icon-v1'; then
+            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261122-fast-taps-bulk-read-v1'; then
               echo "Matching Pages dashboard client is live"
               exit 0
             fi

@@ -24,6 +24,12 @@ jobs:
         run: node --check worker/test/release-gates.integration.mjs
       - name: Run real signed-in owner and administrator acceptance
         env:
+          KOTA_TEST_CONFIRM_WRITES: ${{ vars.KOTA_TEST_CONFIRM_WRITES }}
+          KOTA_TEST_SHOP_ID: ${{ vars.KOTA_TEST_SHOP_ID }}
+          KOTA_TEST_MENU_ITEM_ID: ${{ vars.KOTA_TEST_MENU_ITEM_ID }}
+          KOTA_TEST_OWNER_SUBJECT: ${{ vars.KOTA_TEST_OWNER_SUBJECT }}
+          KOTA_TEST_ADMIN_SUBJECT: ${{ vars.KOTA_TEST_ADMIN_SUBJECT }}
+          KOTA_TEST_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
           KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
           KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}

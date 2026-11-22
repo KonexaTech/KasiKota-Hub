@@ -20,13 +20,16 @@ test("runner exchanges signed-in session cookies for short-lived JWTs",()=>{
  assert.match(script,/adminIdentity\.admin!==true/);
  assert.match(script,/ownerIdentity\.admin!==false/);
 });
-test("runner has non-production safeguards and discovers existing approved owner shop and menu",()=>{
+test("runner has non-production safeguards and only uses explicitly approved fixture records",()=>{
  assert.match(script,/kota-connect-api-dev\.siboniisozulu\.workers\.dev/);
  assert.match(script,/Refusing to create test orders outside the dedicated Kota Connect development Worker/);
  assert.match(script,/randomBytes\(32\)\.toString\("hex"\)/);
  assert.match(script,/\/api\/owner\/shops/);
- assert.match(script,/item\.available===true/);
- assert.doesNotMatch(script,/process\.env\.KOTA_TEST_SHOP_ID|process\.env\.KOTA_TEST_MENU_ITEM_ID|process\.env\.KOTA_TEST_CUSTOMER_TOKEN/);
+ assert.match(script,/selectFixtureShop\(fixtureConfig/);
+ assert.match(script,/selectFixtureMenuItem\(fixtureConfig/);
+ assert.match(script,/assertCandidateHealth\(fixtureConfig/);
+ assert.match(script,/assertFixturePrincipals\(fixtureConfig/);
+ assert.doesNotMatch(script,/shops\.shops\.filter/);
 });
 test("full workflow is separate, non-skipping and uses protected environment secrets",()=>{
  assert.match(workflow,/workflow_dispatch/);

@@ -12,6 +12,7 @@ const uuids={
  item:"22222222-2222-4222-8222-222222222222",
  order:"33333333-3333-4333-8333-333333333333",
  notif:"44444444-4444-4444-8444-444444444444",
+ notif2:"77777777-7777-4777-8777-777777777777",
  appApprove:"55555555-5555-4555-8555-555555555555",
  appReject:"66666666-6666-4666-8666-666666666666"
 };
@@ -22,7 +23,10 @@ let applications=[
  {id:uuids.appApprove,status:"pending",shop_name:"Approved Mock Shop",area:"Newcastle CBD",owner_name:"Owner A"},
  {id:uuids.appReject,status:"pending",shop_name:"Rejected Mock Shop",area:"Newcastle CBD",owner_name:"Owner B"}
 ];
-let notifications=[{id:uuids.notif,kind:"new_order",title:"New test order",body:"Mock only",read_at:null}];
+let notifications=[
+ {id:uuids.notif,kind:"new_order",title:"New test order",body:"Mock only",read_at:null},
+ {id:uuids.notif2,kind:"order_status",title:"Order update",body:"preparing",read_at:null}
+];
 const calls=[];
 const authModule=[
   'export function createAuthClient(){',
@@ -56,7 +60,7 @@ const server=http.createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
 const base="http://127.0.0.1:"+server.address().port;
-const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:["--no-sandbox"]});
 const browserErrors=[];
 const results=[];
 
@@ -94,6 +98,11 @@ function apiResponse(path,method,body){
  if(path==="/api/admin/commission")return {commissionPaused:true,rateCents:50,thresholdCents:2000,eligibleCompletedOrders:1,excludedTestOrders:2,estimatedCommissionCents:50,remainingToThresholdCents:1950,collectedCommissionCents:null,shops:[{shopId:uuids.shop,shopName:"Kota Audit Test Shop",eligibleOrders:1,estimatedCommissionCents:50}]};
  if(path==="/api/notifications")return {notifications};
  if(path==="/api/notifications/"+uuids.notif+"/read"&&method==="PATCH"){notifications[0].read_at="2026-11-19T00:00:00Z";return {ok:true};}
+ if(path==="/api/notifications/read-all"&&method==="PATCH"){
+   const unread=notifications.filter(n=>!n.read_at);
+   for(const n of unread)n.read_at="2026-11-19T00:00:00Z";
+   return {ok:true,updated:unread.length};
+ }
  if(path==="/api/shop-applications"&&method==="POST")return {application:{id:uuids.appApprove,status:"pending"}};
  throw Error("Dashboard called an unmocked route: "+method+" "+path);
 }
@@ -109,7 +118,12 @@ async function makePage(role){
   const request=route.request(),url=new URL(request.url()),method=request.method();
   const body=request.postDataJSON?.()||{};
   calls.push(role+" "+method+" "+url.pathname);
-  try{const data=apiResponse(url.pathname,method,body);await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)});}
+  try{
+     const data=apiResponse(url.pathname,method,body);
+     // Verify immediate feedback under slow staging network responses.
+     if(url.pathname==="/api/notifications/read-all"||url.pathname==="/api/shops/"+uuids.shop+"/menu")await new Promise(resolve=>setTimeout(resolve,450));
+     await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)});
+   }
   catch(error){browserErrors.push(String(error.message));await route.fulfill({status:500,contentType:"application/json",body:JSON.stringify({error:error.message})});}
  });
  await page.goto(base+"/"+(role==="customer"?"neon-customer.html":"neon-"+role+".html"),{waitUntil:"networkidle",timeout:30000});
@@ -193,14 +207,21 @@ try{
  await owner.locator("#notifications").click();
  assert.match(await owner.locator("#notificationList").innerText(),/New test order/);
  assert.match(await owner.locator("#notificationList").innerText(),/Mock only/);
- await owner.locator("#notificationList button").click();
+ await owner.locator("#notificationList button").first().click();
  await resultContains(owner,"Notification marked as read");
  assert.match(await owner.locator("#notificationList").innerText(),/Read/);
+ await owner.locator("#markAllRead").click();
+ // Optimistic UI must clear unread count BEFORE the mocked 450ms response.
+ assert.match(await owner.locator("#unread").innerText(),/0 unread/);
+ await resultContains(owner,"All notifications marked as read");
+ assert.equal(notifications.every(n=>n.read_at!==null),true);
  await owner.locator("#closeNotifications").click();
  results.push("owner: shop management, customer orders dialog, statuses and Neon notifications passed (mocked API)");
  await authActions(owner,"owner");
  await owner.close();
 
+ // New notification arrives for admin after owner has already cleared the mock inbox.
+ notifications.push({id:"88888888-8888-4888-8888-888888888888",kind:"new_order",title:"Admin review",body:"Mock only",read_at:null});
  const admin=await makePage("admin");
  await admin.locator("[data-restricted-panel]").first().waitFor({state:"visible"});
  assert.equal(await admin.locator("#openNotifications").isVisible(),true);
@@ -237,6 +258,9 @@ try{
  await admin.locator("#notificationId").fill(uuids.notif);
  await admin.locator("#markRead").click();
  await resultContains(admin,"Notification marked as read");
+ await admin.locator("#markAllRead").click();
+ assert.match(await admin.locator("#unread").innerText(),/0 unread/);
+ await resultContains(admin,"All notifications marked as read");
  await admin.locator("#closeNotifications").click();
  await admin.locator("#openCommission").click();
  assert.equal(await admin.locator("#commissionDialog").isVisible(),true);
@@ -257,6 +281,8 @@ try{
  await customer.locator("#area").selectOption("newcastle-cbd");
  await customer.locator("#shopSearch").fill("Kota Audit");
  await customer.locator("#shopResults button").click();
+ assert.equal(await customer.locator("#menuStep").isVisible(),true,"Menu opens on the first tap, before the API responds");
+ assert.match(await customer.locator("#menuItems").innerText(),/Loading prices/,"Immediate loading feedback while network is pending");
  await customer.locator("#menuItems button").click();
  await customer.locator("#quantity").fill("1");
  await customer.locator("#fulfillment").selectOption("delivery");
@@ -294,6 +320,7 @@ try{
  assert.ok(calls.some(x=>x.includes("PATCH /api/owner/orders/")),"Owner status update request not observed");
  assert.ok(calls.some(x=>x.includes("PATCH /api/admin/shop-applications/")),"Admin review request not observed");
  assert.ok(calls.some(x=>x.includes("POST /api/orders")),"Guest checkout request not observed");
+ assert.equal(calls.filter(x=>x.includes("PATCH /api/notifications/read-all")).length,2,"Owner and admin must both exercise bulk-read API");
  console.log(JSON.stringify({result:"PASS",type:"LOCAL_MOCK_ONLY",results,apiCalls:calls.length}));
 }finally{
  await browser.close();

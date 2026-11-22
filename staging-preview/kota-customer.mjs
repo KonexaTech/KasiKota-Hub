@@ -1,7 +1,7 @@
 import { findShops, quoteCents, areas } from "./shop-discovery.mjs";
 const $=id=>document.getElementById(id);
 const SESSION_KEY="kota_connect_guest_checkout_v1",ORDER_KEY="kota_connect_last_tracked_order_id";
-let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false;
+let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false,menuLoadSequence=0;
 const money=cents=>"R"+(Number(cents||0)/100).toFixed(2);
 function error(message){$("errorMessage").textContent=message;$("errorMessage").hidden=false;$("errorMessage").scrollIntoView({block:"nearest"});}
 function clearError(){$("errorMessage").hidden=true;$("errorMessage").textContent="";}
@@ -28,7 +28,15 @@ async function api(path,{method="GET",body,publicRoute=false}={}){
   if(!response.ok)throw Error(data?.error || ("Server error "+response.status));
   return data;
 }
-const action=(id,handler)=>$(id).addEventListener("click",async()=>{clearError();try{await handler()}catch(e){error(e.message)}});
+const action=(id,handler)=>$(id).addEventListener("click",async()=>{
+  const button=$(id);
+  if(button.dataset.kcWorking==="true")return;
+  clearError();
+  const previous=button.textContent;
+  button.dataset.kcWorking="true";button.disabled=true;button.setAttribute("aria-busy","true");button.textContent="Working…";
+  try{await handler()}catch(e){error(e.message)}
+  finally{button.textContent=previous;button.disabled=false;button.removeAttribute("aria-busy");delete button.dataset.kcWorking}
+});
 async function loadShops(){
   $("shopCount").textContent="Looking for approved kota shops…";
   const data=await api("/shops",{publicRoute:true});
@@ -50,11 +58,14 @@ function showShops(){
   }
 }
 async function chooseShop(entry){
-  clearError();shop=entry;selectedItem=null;requestId=null;$("confirmStep").hidden=true;
+  clearError();const sequence=++menuLoadSequence;
+  shop=entry;selectedItem=null;requestId=null;$("confirmStep").hidden=true;
   $("menuStep").hidden=false;$("selectedShop").textContent=entry.name+" · "+(entry.area||"Newcastle");
   $("menuItems").replaceChildren();const wait=document.createElement("p");wait.textContent="Loading prices…";$("menuItems").append(wait);
+  jump("menuStep"); // Show the next step immediately; never wait for network before responding to a tap.
   try{
     const data=await api("/shops/"+encodeURIComponent(entry.id)+"/menu",{publicRoute:true});
+    if(sequence!==menuLoadSequence)return; // An older slow response must not replace the newer shop.
     menu=Array.isArray(data.items)?data.items:[];$("menuItems").replaceChildren();
     if(!menu.length){const empty=document.createElement("p");empty.textContent="This shop has not published a menu yet."; $("menuItems").append(empty);}
     for(const item of menu){
@@ -64,8 +75,7 @@ async function chooseShop(entry){
       button.addEventListener("click",()=>chooseItem(item));
       card.append(title,button);$("menuItems").append(card);
     }
-    jump("menuStep");
-  }catch(e){$("menuStep").hidden=true;throw e}
+  }catch(e){if(sequence!==menuLoadSequence)return;$("menuStep").hidden=true;throw e}
 }
 function chooseItem(item){
   clearError();selectedItem=item;requestId=null;
@@ -104,7 +114,9 @@ $("checkout").addEventListener("submit",async event=>{
   event.preventDefault();clearError();
   if(!shop||!selectedItem){error("Choose a shop and tap a menu price first.");return}
   if($("paymentMethod").value!=="cash"){error("Online payments are not available yet.");return}
-  const submit=$("confirmOrder");submit.disabled=true;
+  const submit=$("confirmOrder"),label=submit.innerHTML;
+  submit.disabled=true;submit.setAttribute("aria-busy","true");submit.textContent="Sending order…";
+  $("successMessage").textContent="Submitting your order securely…";
   try{
     const quantity=Number($("quantity").value);
     quoteCents(selectedItem.price_cents,quantity,$("fulfillment").value);
@@ -123,7 +135,7 @@ $("checkout").addEventListener("submit",async event=>{
     requestId=null;$("confirmStep").hidden=true;
     await trackOrder(false);jump("trackStep");
   }catch(e){error(e.message)}
-  finally{submit.disabled=false}
+  finally{submit.disabled=false;submit.removeAttribute("aria-busy");submit.innerHTML=label}
 });
 action("track",()=>trackOrder(true));
 try{const id=localStorage.getItem(ORDER_KEY);if(id)$("orderId").value=id;const area=localStorage.getItem("kota_connect_area");if(areas.some(x=>x.value===area))$("area").value=area;}catch{}
