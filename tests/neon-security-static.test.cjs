@@ -21,6 +21,9 @@ test("Neon Auth verifies signed EdDSA JWTs with JWKS and issuer, without an unsu
  assert.doesNotMatch(auth,/audience\s*:/);
  assert.match(auth,/createRemoteJWKSet/);
 });
+const stagingApi=fs.readFileSync("staging-preview/neon-app.js","utf8");
+const stagingOwner=fs.readFileSync("staging-preview/neon-owner.html","utf8");
+const stagingAdmin=fs.readFileSync("staging-preview/neon-admin.html","utf8");
 test("Authenticated Neon users must verify email and must not be actively banned",()=>{
  assert.match(api,/emailVerified/);
  assert.match(api,/Email verification required/);
@@ -93,7 +96,8 @@ test("All customer/owner/admin staging pages are free of Firebase SDK imports",(
  for(const source of [customer,owner,admin,fs.readFileSync("staging-preview/neon-app.js","utf8")])
   assert.doesNotMatch(source,/firebaseapp\.com|firebase\/auth|firebase\/firestore|firebase-app\.js|firebase-auth\.js/i);
 
- });
+});
+test("Owner and administrator dashboards are login-only and show email verification",()=>{
  assert.doesNotMatch(stagingOwner,/id="signup"/);
  assert.doesNotMatch(stagingAdmin,/id="signup"/);
  assert.match(stagingApi,/emailVerified===false/);
