@@ -77,7 +77,7 @@ test("readable notifications appear inside both dashboards, with one-tap read an
    assert.match(page,/id="notificationList"/);
    assert.match(page,/id="notifications"/);
    assert.match(page,/id="markRead"/);
-   assert.match(page,/neon-app\\.js\\?v=20261122-fast-taps-bulk-read-v1/);
+   assert.match(page,/neon-app\.js\?v=20261122-fast-taps-bulk-read-v1/);
    assert.match(page,/id="markAllRead"/);
  }
  assert.match(client,/renderNotifications\(notifications\)/);
