@@ -207,7 +207,7 @@ try{
  await owner.locator("#notifications").click();
  assert.match(await owner.locator("#notificationList").innerText(),/New test order/);
  assert.match(await owner.locator("#notificationList").innerText(),/Mock only/);
- await owner.locator("#notificationList button").click();
+ await owner.locator("#notificationList button").first().click();
  await resultContains(owner,"Notification marked as read");
  assert.match(await owner.locator("#notificationList").innerText(),/Read/);
  await owner.locator("#markAllRead").click();
