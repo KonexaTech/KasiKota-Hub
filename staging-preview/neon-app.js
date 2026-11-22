@@ -9,11 +9,37 @@ let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
+let loadAdminOrders=async()=>{};
+let loadAdminCommission=async()=>{};
 let refreshCustomerTracking=async()=>{};
 const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
-function showDashboardPanels(allowed){dashboardAccess=Boolean(allowed);document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess})}
+function showDashboardPanels(allowed){
+  dashboardAccess=Boolean(allowed);
+  document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
+  if(!dashboardAccess){
+    currentNotifications=[];notificationRevision++;
+    if($("markAllRead"))$("markAllRead").disabled=true;
+    for(const id of ["manageShopDialog","customerOrdersDialog","notificationsPanel","commissionDialog"])if($(id)?.open)$(id).close();
+    $("notificationList")?.replaceChildren();
+    if($("unread"))$("unread").textContent="Sign in to see notifications.";
+    if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications";
+    if($("adminOrderList"))$("adminOrderList").replaceChildren();
+    if($("adminOrderCount"))$("adminOrderCount").textContent="Sign in to view the latest orders.";
+    if($("commissionPreviewAmount"))$("commissionPreviewAmount").textContent="R0.00";
+  }
+}
+function showAccountActions(signedIn){
+  if($("signedInAccountActions"))$("signedInAccountActions").hidden=!signedIn;
+  if($("signin"))$("signin").hidden=Boolean(signedIn);
+  if($("verificationHelp"))$("verificationHelp").hidden=Boolean(signedIn);
+  if(!signedIn){
+    if($("passwordResetFields"))$("passwordResetFields").hidden=true;
+    if($("togglePasswordReset"))$("togglePasswordReset").setAttribute("aria-expanded","false");
+  }
+}
+
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -38,16 +64,19 @@ async function api(path,method="GET",body,publicRoute=false){const headers={"con
 function option(select,items,label){select.replaceChildren(new Option("Select",""),...items.map(x=>new Option(label(x),x.id)))}
 async function showIdentity(){
   showDashboardPanels(false);
+  showAccountActions(false);
   const r=await auth.getSession();
   if(r.error)throw Error(r.error.message);
   if(!r.data?.user){$("identity").textContent="Not signed in";return}
-  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);$("identity").textContent=r.data.user.email;return}
+  if(role!=="owner"&&role!=="admin"){showDashboardPanels(true);showAccountActions(true);$("identity").textContent=r.data.user.email;return}
   if(r.data.user.emailVerified===false){showDashboardPanels(false);$("identity").textContent="Email verification required. Send a verification code and verify your email before using this dashboard.";return}
   try{
     const me=await api("/api/me");
     const ownerAccess=role==="owner"?await api("/api/owner/access"):null;
     const allowed=role==="admin"?me.admin===true:me.admin===false&&ownerAccess?.approved===true;
     showDashboardPanels(allowed);
+    showAccountActions(allowed);
+    if(allowed&&r.data.user.email&&!$("email").value)$("email").value=r.data.user.email;
     $("identity").textContent=allowed?r.data.user.email:(role==="owner"?(me.admin?"Owner access denied: administrator accounts cannot access the shop dashboard.":"Your shop is awaiting administrator approval. Dashboard access is locked until approval."):"Administrator access denied: this account is not an approved administrator.");
   }catch(e){
     const message=String(e?.message||"please sign in again.");
@@ -57,8 +86,15 @@ async function showIdentity(){
     throw e;
   }
 }
+let signInPending=false;
 $("signin").addEventListener("submit",e=>{
   e.preventDefault();
+  if(signInPending)return;
+  signInPending=true;
+  const submit=$("signin").querySelector('button[type="submit"],button:not([type])');
+  const original=submit?.textContent;
+  if(submit){submit.disabled=true;submit.textContent="Signing in…";submit.setAttribute("aria-busy","true")}
+  out("Signing in…");
   safe(async()=>{
     const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
     if(r.error)throw Error(r.error.message);
@@ -71,6 +107,7 @@ $("signin").addEventListener("submit",e=>{
     }
     if(role==="owner"&&dashboardAccess){
       await loadOwnerOrders(false);
+      await pollNotifications(true);
       out("Signed in. Your shop is approved.");
     }else if(role==="owner"){
       const identity=$("identity").textContent||"";
@@ -85,14 +122,19 @@ $("signin").addEventListener("submit",e=>{
       await showIdentity();
       throw Error("This account is not authorized as an administrator.");
     }else{
+      if(role==="admin"){await loadAdminOrders(false);await loadAdminCommission(false);}
+      await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  })();
+  })().finally(()=>{
+    signInPending=false;
+    if(submit){submit.disabled=false;submit.textContent=original;submit.removeAttribute("aria-busy")}
+  });
 });
 
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{
-  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("verificationCode").value.trim();
+  const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("emailVerificationCode")?.value.trim();
   if(!email||!otp)throw Error("Enter your email and verification code");
   const r=await auth.emailOtp.verifyEmail({email,otp});
   if(r.error)throw Error(r.error.message);
@@ -101,9 +143,55 @@ bind("verifyEmail",async()=>{
   $("registrationStatus")&&($("registrationStatus").textContent="Email verified. Sign in with your password. Owner dashboard access still requires administrator approval.");
   out("Email verified. Please sign in with your password. Owner access remains subject to administrator approval.");
 });
+bind("forgotPassword",async()=>{
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
+  const r=await auth.forgetPassword.emailOtp({email});
+  if(r?.error)throw Error(r.error.message);
+  out("If an account exists for this email, a password reset code has been sent. Enter the code, choose a new password and press Set new password.");
+});
+bind("completePasswordReset",async()=>{
+  if(!dashboardAccess)throw Error("Sign in to your authorized dashboard before resetting your password.");
+  const session=await auth.getSession();
+  const email=String(session.data?.user?.email||"").trim().toLowerCase();
+  if(!email)throw Error("Your signed-in email is not available.");
+  const otp=required("verificationCode","Password reset code");
+  const password=required("newPassword","New password");
+  if(password.length<12)throw Error("Your new password must contain at least 12 characters.");
+  const r=await auth.emailOtp.resetPassword({email,otp,password});
+  if(r?.error)throw Error(r.error.message);
+  $("verificationCode").value="";
+  $("newPassword").value="";
+  try{await auth.signOut()}catch{}
+  await showIdentity();
+  out("Password changed successfully. Sign in with your new password.");
+});
+$("togglePasswordReset")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with your authorized account to reset its password.");
+  const fields=$("passwordResetFields");
+  const expanded=fields.hidden;
+  fields.hidden=!expanded;
+  $("togglePasswordReset").setAttribute("aria-expanded",String(expanded));
+  if(expanded)$("forgotPassword").focus();
+});
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
-$("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
-function bind(id,fn){const el=$(id);if(el)el.onclick=safe(fn)}
+bind("signout",async()=>{await auth.signOut();await showIdentity();out("Signed out")});
+function bind(id,fn){
+  const el=$(id);if(!el)return;
+  el.onclick=safe(async()=>{
+    if(el.dataset.kcWorking==="true")return;
+    const label=el.textContent,wasDisabled=el.disabled;
+    el.dataset.kcWorking="true";el.setAttribute("aria-busy","true");el.textContent="Working…";
+    if(id!=="updateStatus")el.disabled=true;
+    try{await fn()}finally{
+      el.textContent=label;el.removeAttribute("aria-busy");delete el.dataset.kcWorking;
+      // Update-order can become permanently disabled after its final status.
+      if(id!=="updateStatus")el.disabled=wasDisabled;
+    }
+  });
+}
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
@@ -141,6 +229,14 @@ bind("items",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId
 bind("timeline",async()=>out(await api("/api/orders/"+encodeURIComponent($("orderId").value)+"/history")));
 }
 if(role==="owner"){
+const shopDialog=$("manageShopDialog");
+$("manageShopButton")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in with an approved shop-owner account to manage your shop.");
+  if(!shopDialog?.open)shopDialog.showModal();
+  $("myShops")?.click();
+});
+$("closeManageShop")?.addEventListener("click",()=>shopDialog?.close());
+shopDialog?.addEventListener("click",event=>{if(event.target===shopDialog)shopDialog.close()});
 let menuLoadedShop="",menuSnapshot="";
 const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
 const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
@@ -180,7 +276,7 @@ bind("saveShopDetails",async()=>{
   out("Shop details saved. Approved status and existing orders were not changed.");
 });
 
-bind("myShops",async()=>{const r=await api("/api/owner/shops");editableShops=r.shops;option($("shop"),r.shops,x=>x.name);showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(r.shops.length+" shops found. Select your shop and press View menu.");});
+bind("myShops",async()=>{const selected=$("shop").value;const r=await api("/api/owner/shops");editableShops=Array.isArray(r.shops)?r.shops:[];option($("shop"),editableShops,x=>x.name);if(editableShops.some(shop=>shop.id===selected))$("shop").value=selected;else if(editableShops.length===1)$("shop").value=editableShops[0].id;showEditableShop();menuLoadedShop="";menuSnapshot="";$("menuText").value="";out(editableShops.length+" shops found. Select your shop and press View menu.");});
 bind("myMenu",viewOwnerMenu);
 bind("saveMenu",async()=>{
   const shopId=required("shop","Shop");
@@ -266,6 +362,7 @@ bind("updateStatus",async()=>{
     const verified=await api("/api/orders/"+encodeURIComponent(id));
     if(verified.order?.status!==status)throw Error("The API did not confirm the status change. Refresh orders before retrying.");
     await loadOwnerOrders(false);
+    await pollNotifications(true);
     out("Status saved: "+verified.order.order_number+" — "+status.replaceAll("_"," ")+". Customer tracking will reflect this saved status.");
   }finally{
     updateOwnerOrderSelection();
@@ -302,12 +399,252 @@ $("applicationPicker").addEventListener("change",()=>{$("applicationId").value=$
 bind("applications",loadApplications);
 bind("approve",async()=>{const id=required("applicationId","Application");if(!window.confirm("Approve this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"approved"});await loadApplications();out("Shop approved. Refresh dashboard totals to see the updated record.");});
 bind("reject",async()=>{const id=required("applicationId","Application");if(!window.confirm("Reject this shop application?"))return;await api("/api/admin/shop-applications/"+encodeURIComponent(id)+"/review","PATCH",{status:"rejected"});await loadApplications();out("Shop application rejected. Refresh dashboard totals to see updated counts.");});
-bind("orders",async()=>out(await api("/api/admin/orders")));
+const formatAdminMoney=cents=>Number.isFinite(Number(cents))?"R"+(Number(cents)/100).toFixed(2):"—";
+const formatAdminDate=value=>{
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Date unavailable":date.toLocaleString("en-ZA",{dateStyle:"medium",timeStyle:"short"});
+};
+function renderAdminOrders(orders){
+  const list=$("adminOrderList");
+  list.replaceChildren();
+  if(!orders.length){
+    const empty=document.createElement("p");empty.className="section-hint";
+    empty.textContent="There are no customer orders yet.";
+    list.append(empty);return;
+  }
+  for(const order of orders){
+    const card=document.createElement("article");card.className="admin-order-card";card.setAttribute("role","listitem");
+    const header=document.createElement("div");header.className="admin-order-header";
+    const heading=document.createElement("h3");heading.textContent=String(order.order_number||"Order");
+    const state=document.createElement("span");state.className="admin-order-status";
+    state.dataset.state=String(order.status||"pending");state.textContent=String(order.status||"pending").replaceAll("_"," ");
+    header.append(heading,state);
+    const meta=document.createElement("p");meta.className="admin-order-meta";
+    meta.textContent=[String(order.shop_name||"Shop not specified"),formatAdminDate(order.created_at)].join(" · ");
+    const fields=document.createElement("dl");fields.className="admin-order-fields";
+    const pairs=[
+      ["Customer",order.customer_name||"Not provided"],
+      ["Order total",formatAdminMoney(order.total_cents)],
+      ["Collection / delivery",order.fulfillment_type==="pickup"?"Collection":order.fulfillment_type==="delivery"?"Delivery":"Not specified"],
+      ["Area",order.area||"Not specified"]
+    ];
+    for(const [label,value] of pairs){
+      const pair=document.createElement("div");
+      const term=document.createElement("dt");term.textContent=label;
+      const detail=document.createElement("dd");detail.textContent=String(value);
+      pair.append(term,detail);fields.append(pair);
+    }
+    const detailButton=document.createElement("button");
+    detailButton.type="button";detailButton.className="secondary";
+    detailButton.textContent="View order items";
+    detailButton.setAttribute("aria-expanded","false");
+    const detailPanel=document.createElement("div");detailPanel.className="admin-order-items";detailPanel.hidden=true;
+    detailButton.onclick=safe(async()=>{
+      if(!detailPanel.hidden){
+        detailPanel.hidden=true;detailButton.textContent="View order items";detailButton.setAttribute("aria-expanded","false");return;
+      }
+      detailButton.disabled=true;detailButton.textContent="Loading items…";
+      try{
+        const response=await api("/api/orders/"+encodeURIComponent(order.id)+"/items");
+        const items=Array.isArray(response.items)?response.items:[];
+        detailPanel.replaceChildren();
+        const title=document.createElement("strong");title.textContent="Items in this order";
+        detailPanel.append(title);
+        const ul=document.createElement("ul");
+        for(const item of items){
+          const li=document.createElement("li");
+          li.textContent=String(item.item_name||item.name||"Menu item")+" × "+String(item.quantity||1)+" · "+formatAdminMoney(item.unit_price_cents??item.price_cents);
+          ul.append(li);
+        }
+        if(!items.length){const empty=document.createElement("p");empty.textContent="No line items available.";detailPanel.append(empty)}
+        else detailPanel.append(ul);
+        detailPanel.hidden=false;
+        detailButton.setAttribute("aria-expanded","true");
+      }finally{
+        detailButton.disabled=false;
+        detailButton.textContent=detailPanel.hidden?"View order items":"Hide order items";
+      }
+    });
+    card.append(header,meta,fields,detailButton,detailPanel);list.append(card);
+  }
 }
-bind("notifications",async()=>out(await api("/api/notifications")));
-bind("markRead",async()=>out(await api("/api/notifications/"+encodeURIComponent($("notificationId").value)+"/read","PATCH")));
-async function pollNotifications(){if(document.visibilityState!=="visible"||(role==="owner"||role==="admin")&&!dashboardAccess)return;try{const r=await api("/api/notifications");const unread=r.notifications.filter(n=>!n.read_at).length;$("unread").textContent=unread?unread+" unread notifications":"No unread notifications"}catch{$("unread").textContent="Sign in to see notifications"}}
-showIdentity().then(async()=>{if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);if(role==="customer")await refreshCustomerTracking(false);await pollNotifications()}).catch(()=>{});
-setInterval(pollNotifications,20000);
-setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},15000);
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications();if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
+loadAdminOrders=async function(announce=true){
+  const response=await api("/api/admin/orders");
+  const orders=Array.isArray(response.orders)?response.orders:[];
+  renderAdminOrders(orders);
+  $("adminOrderCount").textContent=orders.length+" recent order"+(orders.length===1?"":"s")+" · Live Neon records";
+  if(announce)out("Orders loaded: "+orders.length+(orders.length?" · "+orders.map(item=>item.order_number).filter(Boolean).join(", "):""));
+};
+bind("orders",async()=>loadAdminOrders(true));
+const money=cents=>"R"+(Number(cents||0)/100).toFixed(2);
+loadAdminCommission=async function(announce=true){
+  const data=await api("/api/admin/commission");
+  if(data.commissionPaused!==true||data.rateCents!==50)throw Error("Unexpected commission configuration; no collection actions are allowed.");
+  const estimate=money(data.estimatedCommissionCents);
+  $("commissionPreviewAmount").textContent=estimate;
+  $("commissionEstimate").textContent=estimate;
+  $("commissionEligible").textContent=String(data.eligibleCompletedOrders);
+  $("commissionRemaining").textContent=money(data.remainingToThresholdCents);
+  $("commissionStatus").textContent="Collection paused · Forecast only · "+data.excludedTestOrders+" completed test order(s) excluded.";
+  const list=$("commissionShopList");list.replaceChildren();
+  const active=(Array.isArray(data.shops)?data.shops:[]).filter(shop=>shop.eligibleOrders>0);
+  if(!active.length){
+    const empty=document.createElement("p");empty.className="section-hint";
+    empty.textContent="No completed, non-test orders yet. Commission estimates will appear here.";
+    list.append(empty);
+  }
+  for(const shop of active){
+    const row=document.createElement("div");row.className="commission-shop-row";
+    const name=document.createElement("strong");name.textContent=String(shop.shopName||"Shop");
+    const details=document.createElement("span");details.textContent=String(shop.eligibleOrders)+" completed order(s)";
+    const amount=document.createElement("b");amount.textContent=money(shop.estimatedCommissionCents);
+    row.append(name,details,amount);list.append(row);
+  }
+  if(announce)out("Commission estimates refreshed. No commissions have been charged or collected.");
+};
+bind("refreshCommission",async()=>loadAdminCommission(true));
+const commissionDialog=$("commissionDialog");
+$("openCommission")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Administrator sign-in required to see commissions.");
+  if(!commissionDialog.open)commissionDialog.showModal();
+  loadAdminCommission(false).catch(error=>out("Unable to load commission: "+error.message));
+});
+$("closeCommission")?.addEventListener("click",()=>commissionDialog.close());
+commissionDialog?.addEventListener("click",event=>{if(event.target===commissionDialog)commissionDialog.close()});
+}
+// The server returns only this signed-in user's most recent notifications (read and unread).
+// Render them inside Notifications rather than dumping JSON into the Activity panel.
+const readableNotificationDate=value=>{
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Date unavailable":date.toLocaleString("en-ZA",{dateStyle:"medium",timeStyle:"short"});
+};
+function readableNotificationBody(n){
+  const body=String(n.body||"").trim();
+  if(n.kind==="order_status"&&/^[a-z_]+$/.test(body))return "Order status: "+body.replaceAll("_"," ");
+  if(n.kind==="application_status"&&/^(approved|rejected|pending)$/.test(body))return "Your shop application was "+body+".";
+  return body||"No further details.";
+}
+function renderNotifications(notifications){
+  const list=$("notificationList");if(!list)return;
+  list.replaceChildren();
+  if(!notifications.length){
+    const empty=document.createElement("p");empty.textContent="No notifications yet. New orders and account updates will appear here.";
+    list.append(empty);return;
+  }
+  for(const notification of notifications){
+    const card=document.createElement("article");card.className="notification-card";
+    card.dataset.unread=String(!notification.read_at);card.setAttribute("role","listitem");
+    const title=document.createElement("h3");title.textContent=String(notification.title||"Kota Connect notification");
+    const body=document.createElement("p");body.className="notification-body";body.textContent=readableNotificationBody(notification);
+    const meta=document.createElement("p");meta.className="notification-meta";
+    meta.textContent=[notification.order_number?"Order "+notification.order_number:null,notification.shop_name||null,readableNotificationDate(notification.created_at)].filter(Boolean).join(" · ");
+    const state=document.createElement("p");state.className="notification-status";
+    state.textContent=notification.read_at?"Read":"Unread";
+    card.append(title,body,meta,state);
+    if(!notification.read_at){
+      const button=document.createElement("button");button.type="button";button.textContent="Mark as read";
+      button.setAttribute("aria-label","Mark "+title.textContent+" as read");
+      button.onclick=safe(async()=>markNotificationRead(notification.id));
+      card.append(button);
+    }
+    list.append(card);
+  }
+}
+let notificationRequest=null;
+let currentNotifications=[],notificationRevision=0,notificationMutationPending=false;
+function displayNotifications(notifications){
+  currentNotifications=notifications;
+  renderNotifications(notifications);
+  const unread=notifications.filter(n=>!n.read_at).length;
+  if($("unread"))$("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
+  if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"+(unread?" ("+unread+" new)":"");
+  if($("openDashboardNotifications"))$("openDashboardNotifications").textContent="View notifications"+(unread?" ("+unread+" new)":"");
+  const bulk=$("markAllRead");
+  if(bulk){bulk.disabled=!notifications.length||notificationMutationPending;bulk.textContent=notificationMutationPending?"Saving…":"Mark all as read";}
+}
+async function pollNotifications(force=false){
+  if(role==="customer"||!dashboardAccess||notificationMutationPending||!force&&document.visibilityState!=="visible")return currentNotifications;
+  if(notificationRequest){try{await notificationRequest}catch{}if(!force||notificationMutationPending)return currentNotifications}
+  const revision=notificationRevision;
+  const task=(async()=>{
+    try{
+      const response=await api("/api/notifications");
+      if(!dashboardAccess||notificationMutationPending||revision!==notificationRevision)return currentNotifications;
+      const notifications=Array.isArray(response.notifications)?response.notifications:[];
+      displayNotifications(notifications);
+      return notifications;
+    }catch(error){
+      if(dashboardAccess&&!notificationMutationPending&&revision===notificationRevision)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
+      if(force)throw error;
+      return currentNotifications;
+    }
+  })();
+  notificationRequest=task;
+  try{return await task}finally{if(notificationRequest===task)notificationRequest=null}
+}
+async function commitNotificationReads(path,matching,success){
+  if(notificationMutationPending)return;
+  notificationMutationPending=true;notificationRevision++;
+  const previous=currentNotifications;
+  const now=new Date().toISOString();
+  displayNotifications(previous.map(n=>matching(n)?{...n,read_at:n.read_at||now}:n));
+  try{
+    const result=await api(path,"PATCH");
+    out(success+(result.updated===undefined?"":" ("+result.updated+" updated)"));
+  }catch(error){
+    displayNotifications(previous);
+    throw error;
+  }finally{
+    notificationMutationPending=false;
+    displayNotifications(currentNotifications);
+    pollNotifications(true).catch(error=>out("Unable to refresh notifications: "+error.message));
+  }
+}
+async function markNotificationRead(id){
+  if(!orderIdPattern.test(id))throw Error("Choose a valid notification.");
+  return commitNotificationReads("/api/notifications/"+encodeURIComponent(id)+"/read",n=>n.id===id,"Notification marked as read.");
+}
+async function markAllNotificationsRead(){
+  if(!currentNotifications.length)return out("No notifications to mark as read.");
+  return commitNotificationReads("/api/notifications/read-all",()=>true,"All notifications marked as read.");
+}
+const ordersDialog=$("customerOrdersDialog");
+$("openCustomerOrders")?.addEventListener("click",()=>{
+  if(!dashboardAccess)return out("Sign in to open customer orders.");
+  if(!ordersDialog.open)ordersDialog.showModal();
+  const refresh=role==="admin"?loadAdminOrders:loadOwnerOrders;
+  refresh(false).catch(error=>out("Unable to refresh orders: "+error.message));
+});
+$("closeCustomerOrders")?.addEventListener("click",()=>ordersDialog.close());
+ordersDialog?.addEventListener("click",event=>{if(event.target===ordersDialog)ordersDialog.close()});
+const notificationsDialog=$("notificationsPanel");
+function openNotificationsDialog(){
+  if(!dashboardAccess){
+    out("Sign in with your approved "+(role==="owner"?"shop-owner":"administrator")+" account to view notifications.");
+    $("accountPanel").scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
+  if(!notificationsDialog.open)notificationsDialog.showModal();
+  pollNotifications(true).catch(error=>out("Unable to refresh notifications: "+error.message));
+}
+const shortcut=$("openNotifications");
+if(shortcut)shortcut.addEventListener("click",openNotificationsDialog);
+$("openDashboardNotifications")?.addEventListener("click",openNotificationsDialog);
+$("closeNotifications")?.addEventListener("click",()=>notificationsDialog.close());
+notificationsDialog?.addEventListener("click",event=>{if(event.target===notificationsDialog)notificationsDialog.close()});
+bind("notifications",async()=>{
+  const items=await pollNotifications(true);
+  out("Notifications updated. "+items.length+" message"+(items.length===1?"":"s")+" shown in Notifications.");
+});
+bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
+$("markAllRead")?.addEventListener("click",()=>markAllNotificationsRead().catch(error=>out("Error: "+error.message)));
+showIdentity().then(async()=>{
+  if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
+  if(role==="admin"&&dashboardAccess){await loadAdminOrders(false);await loadAdminCommission(false);}
+  if(role==="customer")await refreshCustomerTracking(false);
+  await pollNotifications(true);
+}).catch(()=>{});
+setInterval(()=>pollNotifications(false).catch(()=>{}),10000);
+setInterval(()=>{if(role==="owner"&&dashboardAccess&&document.visibilityState==="visible")loadOwnerOrders(false).catch(()=>{})},10000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){pollNotifications(true).catch(()=>{});if(role==="owner"&&dashboardAccess)loadOwnerOrders(false).catch(()=>{})}});
+window.addEventListener("focus",()=>{pollNotifications(true).catch(()=>{})});

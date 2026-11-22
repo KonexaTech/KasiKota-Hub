@@ -12,6 +12,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check Neon Worker and customer ordering scripts
         run: |
           node --check worker/src/index.js
@@ -31,6 +34,8 @@ jobs:
           node --test tests/customer-journey.test.mjs
           node --test tests/customer-price-confirm.test.cjs
           node --test tests/three-experiences-static.test.cjs
+          node --test tests/full-role-acceptance-static.test.cjs
+          node --test tests/dashboard-buttons-audit.test.cjs
           node --test tests/status-sync.test.cjs
           node tests/neon-ordering-only.test.cjs
           node --test tests/neon-session-jwt.test.cjs
@@ -38,3 +43,40 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
+          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
+          node --test worker/test/notifications-bulk.test.mjs
+      - name: Exercise all dashboard buttons in isolated Chromium mocks
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium
+          node tests/verify-browser-all-buttons.mjs
+
+  checkout-shop-concurrency:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kota_lock_test
+          POSTGRES_USER: kota_test
+          # Isolated disposable CI database only; never used for a hosted project.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kota_test -d kota_lock_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked Worker dependencies
+        working-directory: worker
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Exercise checkout lock against an independent concurrent writer
+        env:
+          KOTA_LOCK_TEST_DATABASE_URL: postgresql://kota_test@127.0.0.1:5432/kota_lock_test
+        run: node --test worker/test/checkout-shop-concurrency.test.mjs

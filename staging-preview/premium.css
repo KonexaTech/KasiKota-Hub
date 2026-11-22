@@ -47,3 +47,84 @@ a{color:var(--kc-green)}
 #steps li.done:before{background:var(--kc-green);border-color:var(--kc-green)}
 @media(min-width:760px){body:has(#orderForm) main{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}body:has(#orderForm) #welcome{grid-column:1/-1}body:has(#orderForm) #shops{grid-column:1/-1}body:has(#orderForm) #order{grid-column:1/-1}}
 @media(max-width:640px){nav{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap}nav a{white-space:nowrap}main,.wrap{width:calc(100% - 22px)!important;margin:14px auto!important}.row{grid-template-columns:1fr!important}.statgrid{grid-template-columns:1fr!important}header{text-align:left!important}}
+
+/* Readable owner/admin notifications; uses the existing green palette. */
+.notification-list{display:grid;gap:11px;margin:14px 0}
+.notification-card{border:1px solid var(--kc-line);border-radius:13px;padding:14px;background:#fff;overflow-wrap:anywhere}
+.notification-card[data-unread="true"]{background:#f3faf4;border-color:#b4dbc0}
+.notification-card h3{font-size:1rem!important;margin:0 0 7px}
+.notification-card p{margin:7px 0}
+.notification-card .notification-meta{font-size:.82rem;color:var(--kc-muted);font-weight:550}
+.notification-card .notification-status{font-size:.82rem;font-weight:800;color:var(--kc-green)}
+.notification-card button{margin:8px 0 0;font-size:.88rem}
+.notification-card .notification-body{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--kc-ink)}
+
+/* Owner and administrator staging dashboards: accessible, focused professional panels. */
+.section-action-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px}
+.section-action-row h2{margin:0 0 4px}
+.section-hint,.account-intro{font-size:.91rem;line-height:1.55;color:var(--kc-muted);margin:.35rem 0 .9rem}
+.dashboard-quick-card .section-hint{margin-bottom:0}
+.account-actions{display:flex;flex-wrap:wrap;gap:9px;margin:16px 0 4px}
+.account-disclosure{border:1px solid var(--kc-line);border-radius:14px;margin:14px 0;background:#fbfdfb;overflow:hidden}
+.account-disclosure summary{cursor:pointer;display:list-item;font-weight:800;padding:13px 16px;color:var(--kc-green)}
+.account-disclosure summary:focus-visible{outline:3px solid #f4772166;outline-offset:-3px}
+.account-subpanel{border:1px solid #dbe5dc;background:#f8fbf8;border-radius:14px;padding:16px;margin-top:14px}
+.account-disclosure .account-subpanel{margin:0;border:0;border-top:1px solid var(--kc-line);border-radius:0;background:#fff}
+.account-subpanel[hidden],#signedInAccountActions[hidden]{display:none!important}
+.account-subpanel h3{margin:0 0 5px;color:var(--kc-green)}
+.account-help-link{font-size:.85rem;margin:9px 0}
+.account-help-link a{font-weight:750}
+.kc-dialog{width:min(640px,calc(100vw - 26px));max-width:none;max-height:min(90dvh,900px);padding:20px 24px 24px;border:1px solid #d4e2d5;border-radius:20px;box-shadow:0 30px 90px #07231566;background:#fff;color:var(--kc-ink);overflow:auto}
+.kc-dialog:not([open]){display:none!important}
+.kc-dialog::backdrop{background:rgba(10,28,17,.62);backdrop-filter:blur(3px)}
+.kc-dialog-header{display:flex;justify-content:space-between;align-items:start;gap:14px;padding-bottom:12px;border-bottom:1px solid var(--kc-line);margin-bottom:14px}
+.kc-dialog-header h2{margin:0!important;font-size:1.4rem!important}
+.kc-dialog-header .eyebrow{display:block;font-size:.74rem;font-weight:850;letter-spacing:.13em;color:var(--kc-orange)}
+.kc-dialog-body h3{margin:20px 0 8px}
+.kc-dialog-body label{margin-top:15px}
+.admin-order-list{display:grid;gap:14px;margin-top:18px}
+.admin-order-card{border:1px solid var(--kc-line);border-radius:17px;padding:18px;background:linear-gradient(140deg,#fff 45%,#fcfcf7);overflow-wrap:anywhere}
+.admin-order-header{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:10px}
+.admin-order-header h3{font-size:1.06rem;margin:0;color:var(--kc-green);font-weight:850}
+.admin-order-meta{color:var(--kc-muted);font-size:.86rem;margin:5px 0 14px}
+.admin-order-status{display:inline-block;border-radius:999px;padding:6px 11px;background:#e7f1e9;color:#125734;font-size:.82rem;font-weight:850;text-transform:capitalize}
+.admin-order-status[data-state="pending"],.admin-order-status[data-state="delayed"]{background:#fff0d7;color:#88520e}
+.admin-order-status[data-state="rejected"]{background:#fae6e4;color:#a03b32}
+.admin-order-status[data-state="completed"]{background:#dff3e6;color:#116137}
+.admin-order-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px 13px;margin:0 0 14px}
+.admin-order-fields div{min-width:0}
+.admin-order-fields dt{color:var(--kc-muted);font-size:.76rem;font-weight:750;text-transform:uppercase;letter-spacing:.035em}
+.admin-order-fields dd{color:var(--kc-ink);font-size:.95rem;font-weight:750;margin:2px 0 0;overflow-wrap:anywhere}
+.admin-order-items{margin:12px 0;padding:13px;border-radius:13px;background:#f1f6f1}
+.admin-order-items[hidden]{display:none!important}
+.admin-order-items ul{padding-left:19px;margin:6px 0}
+@media(max-width:640px){.kc-dialog{padding:16px 15px;max-height:94dvh}.section-action-row>button{width:100%}.admin-order-card{padding:14px}.account-actions>button{flex:1 1 135px}}
+
+/* App-grade account dashboards: overview cards launch accessible focused dialogs. */
+.dashboard-quick-card{border-left:4px solid var(--kc-green-2)!important}
+.dashboard-quick-card:has(#adminCommissionPanel){border-left-color:var(--kc-orange)!important}
+.kc-dialog{width:min(760px,calc(100vw - 26px))}
+.kc-orders-dialog{width:min(800px,calc(100vw - 26px))}
+.kc-notification-dialog{width:min(700px,calc(100vw - 26px))}
+.kc-commission-dialog{width:min(760px,calc(100vw - 26px))}
+.kc-dialog .section-hint{max-width:64ch}
+.kc-dialog .kc-dialog-header{position:sticky;top:-20px;z-index:2;background:white;padding-top:12px}
+.commission-summary{margin:8px 0 0;font-weight:650;color:var(--kc-ink)}
+.commission-summary strong{color:var(--kc-green);font-size:1.15rem}
+.commission-paused{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.02em;background:#fff1de;color:#88520e;border-radius:999px;padding:4px 9px;margin-left:6px}
+.commission-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.commission-metrics>div{background:#f4f8f2;border:1px solid #dae5d8;border-radius:14px;padding:15px}
+.commission-metrics span{display:block;font-size:.83rem;color:var(--kc-muted);font-weight:700}
+.commission-metrics strong{display:block;font-size:1.45rem;color:var(--kc-green);margin-top:5px}
+.commission-shop-list{display:grid;gap:9px}
+.commission-shop-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:13px 15px;background:#fafcf8;border:1px solid var(--kc-line);border-radius:13px}
+.commission-shop-row strong{overflow-wrap:anywhere}
+.commission-shop-row span{font-size:.82rem;color:var(--kc-muted)}
+.commission-shop-row b{color:var(--kc-green)}
+@media(max-width:640px){.commission-shop-row{grid-template-columns:1fr auto}.commission-shop-row span{grid-column:1}.commission-shop-row b{grid-column:2;grid-row:1/3}}
+
+/* Immediate tactile feedback on mobile without delaying network-safe operations. */
+button,.button,nav a{touch-action:manipulation;-webkit-tap-highlight-color:rgba(20,92,56,.16)}
+button:active:not(:disabled),.button:active{transform:translateY(1px) scale(.98)!important;filter:brightness(.93)!important}
+button[aria-busy="true"]{cursor:progress}
+@media(prefers-reduced-motion:reduce){button,.button{transition:none!important}}

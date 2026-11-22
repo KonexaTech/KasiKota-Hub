@@ -26,6 +26,13 @@ test("origin restriction and method restriction remain enforced", async () => {
   assert.equal((await worker.fetch(request("/password-reset-request", "DELETE"), env)).status, 405);
 });
 
+ fix/kota-staging-recovery-routing-20261119
 test("unknown non-API paths remain unavailable", async () => {
+
+test("recovery pages require the staging Neon-only mode, and unknown paths remain unavailable", async () => {
+  const blocked = await worker.fetch(request("/password-reset-request"), { NEON_ONLY_MODE:"false" });
+  assert.equal(blocked.status,503);
+
+ feature/neon-only-cutover
   assert.equal((await worker.fetch(request("/unrelated"), env)).status, 404);
 });
