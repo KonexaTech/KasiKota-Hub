@@ -3,6 +3,7 @@ const assert=require("node:assert/strict");
 const html=fs.readFileSync("staging-preview/neon-customer.html","utf8");
 const client=fs.readFileSync("staging-preview/kota-customer.mjs","utf8");
 const discovery=fs.readFileSync("staging-preview/shop-discovery.mjs","utf8");
+ fix/kota-connect-full-audit-20261119
 const backend=fs.readFileSync("worker/src/neon-api.js","utf8");
 assert.match(html,/<select id="area"/,"Area dropdown must remain");
 assert.match(html,/id="shopSearch"/,"Shop-name search must remain");
@@ -19,3 +20,21 @@ assert.match(backend,/test_order,client_request_id/,"Staging orders must be flag
 assert.match(backend,/commissionPaused:true/,"Launch commission must remain paused");
 assert.match(html,/<option value="online" disabled>/,"Online payment must remain disabled until verified");
 console.log("PASS customer price-to-confirm, R5 delivery, guest checkout and launch payment controls");
+
+const api=fs.readFileSync("worker/src/neon-api.js","utf8");
+for(const id of ["welcome","proceed","area","shopSearch","shopResults","menuItems","confirmStep","trackStep"])assert.ok(html.includes('id="'+id+'"'));
+assert.ok(html.includes("Delivery (R5 estimated)"));
+assert.ok(html.includes("No account needed"));
+assert.doesNotMatch(html,/id="signin"|id="password"|id="signup"/);
+assert.doesNotMatch(html,/<img[\s>]/i);
+assert.ok(client.includes('button.textContent=money(item.price_cents)+" →"'));
+assert.ok(client.includes('button.addEventListener("click",()=>chooseItem(item))'));
+assert.ok(client.includes('$("confirmStep").hidden=false'));
+assert.ok(client.includes('headers.authorization="Guest "+token();'));
+assert.ok(client.includes("requestId,shopId:shop.id"));
+assert.ok(client.includes("localStorage.setItem(ORDER_KEY,id)"));
+assert.ok(discovery.includes('fulfillment==="delivery"?500:0'));
+assert.ok(api.includes('const delivery=data.fulfillmentType==="delivery"?500:0;'));
+assert.ok(api.includes("ON CONFLICT (customer_subject,client_request_id)"));
+console.log("PASS: no-account price-to-confirm ordering, R5 delivery and guest order tracking");
+ feature/neon-only-cutover

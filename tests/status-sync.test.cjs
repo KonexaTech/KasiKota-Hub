@@ -3,44 +3,42 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const vm=require("node:vm");
 const read=p=>fs.readFileSync(p,"utf8");
-const stage=read("staging-preview/neon-app.js");
-const root=read("neon-app.js");
+const app=read("staging-preview/neon-app.js");
+const customer=read("staging-preview/kota-customer.mjs");
 const worker=read("worker/src/neon-api.js");
-for(const [label,app,prefix] of [["staging",stage,"staging-preview/"],["root",root,""]]){
- test(label+" owner order must be selected and status read back from database",()=>{
-   const html=read(prefix+"neon-owner.html");
-   assert.match(html,/id="ownerOrderSelect"/);
-   assert.match(html,/id="currentOrderStatus"/);
-   assert.match(app,/new Option\(order\.order_number/);
-   assert.match(app,/if\(!selected\)throw Error\("Click Refresh orders/);
-   assert.match(app,/await api\("\/api\/owner\/orders\/"/);
-   assert.match(app,/const verified=await api\("\/api\/orders\/"/);
-   assert.match(app,/verified\.order\?\.status!==status/);
- });
- test(label+" customer tracking is polled and shown without overwriting checkout",()=>{
-   const html=read(prefix+"neon-customer.html");
-   assert.match(html,/id="trackingStatus"/);
-   assert.match(html,/id="trackingChecked"/);
-   assert.match(app,/refreshCustomerTracking=async function/);
-   assert.match(app,/\$\("trackingStatus"\)\.textContent="Order "/);
-   assert.match(app,/setInterval\(\(\)=>\{if\(document\.visibilityState==="visible"\)refreshCustomerTracking\(false\)/);
-   assert.match(app,/\},10000\)/);
-   assert.match(app,/rememberTrackedOrder\(data\.order\.id\)/);
-   assert.match(app,/localStorage\.getItem\(lastTrackedOrderStorageKey\)/);
- });
- test(label+" only allows backend-supported status transitions",()=>{
-   const start=app.indexOf("const allowedOwnerTransitions=");
-   const end=app.indexOf("function updateOwnerOrderSelection()",start);
-   assert.ok(start>=0&&end>start,"Owner transition policy missing");
-   const context={};
-   vm.runInNewContext(app.slice(start,end)+"\nglobalThis.check=nextOwnerStatuses;",context);
-   const check=(status,fulfillment_type)=>Array.from(context.check({status,fulfillment_type}));
-   assert.deepEqual(check("pending","pickup"),["accepted","rejected"]);
-   assert.deepEqual(check("accepted","pickup"),["preparing","delayed","rejected"]);
-   assert.deepEqual(check("preparing","pickup"),["ready_for_collection","delayed"]);
-   assert.deepEqual(check("preparing","delivery"),["out_for_delivery","delayed"]);
-   assert.deepEqual(check("ready_for_collection","pickup"),["completed"]);
-   assert.deepEqual(check("completed","pickup"),[]);
-   assert.match(worker,/const next=\{pending:\["accepted","rejected"\]/);
- });
-}
+test("owner must select an incoming order and verify the saved status",()=>{
+ const html=read("staging-preview/neon-owner.html");
+ assert.ok(html.includes('id="ownerOrderSelect"'));
+ assert.ok(html.includes('id="currentOrderStatus"'));
+ assert.ok(app.includes("new Option(order.order_number"));
+ assert.ok(app.includes('if(!selected)throw Error("Click Refresh orders'));
+ assert.ok(app.includes('await api("/api/owner/orders/"'));
+ assert.ok(app.includes('const verified=await api("/api/orders/"'));
+ assert.ok(app.includes("verified.order?.status!==status"));
+});
+test("customer tracking uses the saved guest order and refreshes from Neon",()=>{
+ const html=read("staging-preview/neon-customer.html");
+ assert.ok(html.includes('id="trackingStatus"'));
+ assert.ok(html.includes('id="trackingChecked"'));
+ assert.ok(customer.includes("async function trackOrder(announce=true)"));
+ assert.ok(customer.includes('const response=await api("/orders/"+encodeURIComponent(id))'));
+ assert.ok(customer.includes('$("trackingStatus").textContent="Order "'));
+ assert.ok(customer.includes("localStorage.setItem(ORDER_KEY,id)"));
+ assert.ok(customer.includes("localStorage.getItem(ORDER_KEY)"));
+ assert.ok(customer.includes('setInterval(()=>{if(document.visibilityState==="visible")trackOrder(false).catch(()=>{})},10000);'));
+});
+test("owner transitions match the backend and prevent unsupported delivery states",()=>{
+ const start=app.indexOf("const allowedOwnerTransitions=");
+ const end=app.indexOf("function updateOwnerOrderSelection()",start);
+ assert.ok(start>=0&&end>start,"Owner transition policy missing");
+ const context={};
+ vm.runInNewContext(app.slice(start,end)+"\nglobalThis.check=nextOwnerStatuses;",context);
+ const check=(status,fulfillment_type)=>Array.from(context.check({status,fulfillment_type}));
+ assert.deepEqual(check("pending","pickup"),["accepted","rejected"]);
+ assert.deepEqual(check("accepted","pickup"),["preparing","delayed","rejected"]);
+ assert.deepEqual(check("preparing","pickup"),["ready_for_collection","delayed"]);
+ assert.deepEqual(check("preparing","delivery"),["out_for_delivery","delayed"]);
+ assert.deepEqual(check("ready_for_collection","pickup"),["completed"]);
+ assert.deepEqual(check("completed","pickup"),[]);
+ assert.ok(worker.includes('const next={pending:["accepted","rejected"]'));
+});

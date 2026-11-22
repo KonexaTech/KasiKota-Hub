@@ -1,8 +1,9 @@
 {
   "appId": "za.co.kotaconnect.staging",
-  "appName": "Kota Connect Neon Staging",
+  "appName": "Kota Connect",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "url": "https://kota-connect-neon-staging.pages.dev/neon-customer.html"
   }
 }

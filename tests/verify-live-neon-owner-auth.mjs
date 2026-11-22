@@ -13,7 +13,11 @@ if(!signup.ok)throw Error("Staging signup failed (HTTP "+signup.status+")");
 if(!cookie)throw Error("Staging signup did not set a session cookie");
 const session=await get("/auth/get-session",{headers:{cookie}});
 const sessionData=await session.json().catch(()=>null);
+ fix/kota-connect-full-audit-20261119
 console.log(JSON.stringify({stage:"session",status:session.status,hasUser:!!sessionData?.user}));
+
+console.log(JSON.stringify({stage:"session",status:session.status,hasUser:!!sessionData?.user,emailVerified:sessionData?.user?.emailVerified===true}));
+ feature/neon-only-cutover
 if(!session.ok||!sessionData?.user)throw Error("Session cookie did not restore Neon Auth session");
 const token=await get("/auth/token",{headers:{cookie,accept:"application/json"}});
 const tokenData=await token.json().catch(()=>null);
@@ -21,6 +25,7 @@ const jwt=tokenData?.token??tokenData?.data?.token;
 const jwtOK=typeof jwt==="string"&&jwt.split(".").length===3;
 let claims={};
 if(jwtOK){try{claims=JSON.parse(Buffer.from(jwt.split(".")[1],"base64url").toString("utf8"))}catch{}}
+ fix/kota-connect-full-audit-20261119
 console.log(JSON.stringify({stage:"JWT",status:token.status,hasSignedJwt:jwtOK,hasIssuer:typeof claims.iss==="string",hasAudience:Object.prototype.hasOwnProperty.call(claims,"aud"),hasSubject:typeof claims.sub==="string"}));
 if(!token.ok||!jwtOK)throw Error("Auth token route failed (HTTP "+token.status+")");
 for(const route of ["/api/me","/api/owner/orders"]){
@@ -30,3 +35,20 @@ for(const route of ["/api/me","/api/owner/orders"]){
  if(response.status!==403||!String(data?.error||"").includes("Email verification required"))throw Error(route+" did not reject an unverified signed account");
 }
 console.log("PASS: Neon Auth cookie -> signed JWT -> server accepts signature but blocks unverified owner/admin access");
+
+console.log(JSON.stringify({stage:"JWT",status:token.status,hasSignedJwt:jwtOK,hasIssuer:typeof claims.iss==="string",hasSubject:typeof claims.sub==="string",hasAudience:Object.prototype.hasOwnProperty.call(claims,"aud")}));
+if(!token.ok||!jwtOK)throw Error("Auth token route failed (HTTP "+token.status+")");
+const authHeaders={authorization:"Bearer "+jwt,accept:"application/json"};
+for(const [route,options] of [
+ ["/api/me",{}],
+ ["/api/owner/orders",{}],
+ ["/api/shop-applications",{method:"POST",headers:{...authHeaders,"content-type":"application/json"},body:"{}"}]
+]){
+ const response=await get(route,{headers:authHeaders,...options});
+ const data=await response.json().catch(()=>null);
+ const blocked=response.status===403&&String(data?.error||"").includes("Email verification required");
+ console.log(JSON.stringify({stage:"unverified-account-gate",route,status:response.status,blocked}));
+ if(!blocked)throw Error(route+" did not reject an unverified signed account");
+}
+console.log("PASS: signed Neon JWT is validated, but unverified accounts cannot use owner/admin or application APIs");
+ feature/neon-only-cutover

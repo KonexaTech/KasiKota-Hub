@@ -24,6 +24,6 @@ jobs:
           node-version: '22'
       - name: Verify auth client source and JWT helper
         run: |
-          node --check staging-preview/neon-app.js
+          node --input-type=module --check < staging-preview/neon-app.js
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-security-static.test.cjs

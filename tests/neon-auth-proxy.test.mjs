@@ -63,10 +63,15 @@ test("owner/admin client obtains a signed session JWT and checks roles server-si
   assert.match(app,/\/api\/me/);
   assert.match(app,/me\.admin===false/);
   assert.match(app,/me\.admin===true/);
+ fix/kota-connect-full-audit-20261119
   assert.match(app,/ownerAccess\?\.approved===true/);
   const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
   assert.match(registration,/\/api\/shop-applications/);
   assert.match(registration,/emailOtp\.verifyEmail/);
   assert.match(registration,/await auth\.signOut\(\)/);
+
+  const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
+  assert.match(registration,/fetch\("\/api\/shop-applications"/);
+ feature/neon-only-cutover
 });
 test.after(()=>{globalThis.fetch=oldFetch});
