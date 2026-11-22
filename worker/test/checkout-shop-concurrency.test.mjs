@@ -10,6 +10,7 @@ test('approved checkout shop lock blocks a concurrent suspension until checkout 
     const target=new URL(connectionString);
     assert.ok(['127.0.0.1','localhost','[::1]'].includes(target.hostname),'Refuse non-local database');
     assert.equal(target.pathname,'/kota_lock_test','Refuse any database except the disposable concurrency fixture');
+    assert.equal(target.search,'','Refuse query parameters overriding the local fixture connection');
     const source=readFileSync(new URL('../src/neon-api.js',import.meta.url),'utf8');
     const checkout=source.slice(source.indexOf('if(method==="POST"&&path==="/api/orders")'));
     const sql=/db.query\("(SELECT id,owner_subject FROM kc_shops[^"\n]+)"/.exec(checkout)?.[1];

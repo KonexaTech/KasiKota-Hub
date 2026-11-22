@@ -5,14 +5,15 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check src/neon-api.js && node --test test/role-policy.test.mjs test/recovery-routing.test.mjs test/guest-auth.test.mjs test/checkout-validation.test.mjs test/checkout-shop-lock.test.mjs test/checkout-shop-concurrency.test.mjs test/live-acceptance-guard.test.mjs && node --check test/release-gates.integration.mjs",
+    "check": "node --check src/index.js && node --check src/neon-api.js && node --test test/role-policy.test.mjs test/recovery-routing.test.mjs test/guest-auth.test.mjs test/checkout-validation.test.mjs test/checkout-case-regression.test.mjs test/status-lifecycle.test.mjs test/ordering-postgres.test.mjs test/checkout-shop-lock.test.mjs test/checkout-shop-concurrency.test.mjs test/live-acceptance-guard.test.mjs && node --check test/release-gates.integration.mjs",
     "test:integration": "node test/release-gates.integration.mjs"
   },
   "dependencies": {
-    "pg": "^8.16.3",
-    "jose": "^6.0.0"
+    "jose": "^6.0.0",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
     "wrangler": "^4.0.0"
   }
 }
