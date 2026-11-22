@@ -12,6 +12,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check Neon Worker and customer ordering scripts
         run: |
           node --check worker/src/index.js
@@ -40,6 +43,7 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
+          node --test worker/test/checkout-validation.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
         run: |
           npm install --no-save playwright
