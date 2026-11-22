@@ -6,3 +6,9 @@ header .dash-nav .admin-link{background:#ffcd76;border-color:#ffcd76;color:#1d3b
 header .dash-nav .dashboard-link:hover{filter:brightness(1.07)}
 header .dash-nav .dashboard-link:focus-visible{outline:3px solid #ffac42;outline-offset:3px}
 @media(max-width:490px){header .dash-nav .dashboard-link{flex:1 1 44%;font-size:.81rem;padding:10px 7px}}
+
+/* Touch-first response: feedback occurs at press, before any network request finishes. */
+button,header .dash-nav a{touch-action:manipulation;-webkit-tap-highlight-color:rgba(23,107,69,.16)}
+button:active:not(:disabled),header .dash-nav a:active{transform:scale(.98);filter:brightness(.93)}
+button[aria-busy="true"]{cursor:progress}
+@media(prefers-reduced-motion:reduce){button,header .dash-nav a{transition:none}}
