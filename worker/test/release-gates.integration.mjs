@@ -1,11 +1,21 @@
 // Real customer-owner-admin acceptance on the isolated dev Worker and Neon staging.
 // Requires only verified staging owner/admin credentials stored as Actions environment secrets.
+ fix/kota-real-role-e2e-20261119
 // Generates fresh anonymous guest secrets; discovers the approved owner's shop and menu.
 // Never prints passwords, session cookies, JWTs, account IDs, or customer tokens.
 // All orders created through the dev Worker are flagged as test orders.
 import { randomBytes, randomUUID } from "node:crypto";
 
 const base=process.env.KOTA_TEST_API_BASE||"https://kota-connect-api-dev.siboniisozulu.workers.dev";
+
+// Uses an explicit approved fixture allowlist; never selects an arbitrary owner shop.
+// Never prints passwords, session cookies, JWTs, account IDs, or customer tokens.
+// All orders created through the dev Worker are flagged as test orders.
+import { randomBytes, randomUUID } from "node:crypto";
+import { liveAcceptanceConfig, assertCandidateHealth, assertFixturePrincipals, selectFixtureShop, selectFixtureMenuItem } from "./live-acceptance-guard.mjs";
+
+let base=process.env.KOTA_TEST_API_BASE||"https://kota-connect-api-dev.siboniisozulu.workers.dev";
+ feature/neon-only-cutover
 const site="https://kota-connect-neon-staging.pages.dev";
 if(new URL(base).origin!=="https://kota-connect-api-dev.siboniisozulu.workers.dev")
  throw Error("Refusing to create test orders outside the dedicated Kota Connect development Worker.");
@@ -22,6 +32,11 @@ if(missing.length)throw Error(
  "KOTA_TEST_OWNER_EMAIL, KOTA_TEST_OWNER_PASSWORD, KOTA_TEST_ADMIN_EMAIL, KOTA_TEST_ADMIN_PASSWORD. "+
  "Missing "+missing.length+" secret(s). Do not treat this workflow as passed."
 );
+ fix/kota-real-role-e2e-20261119
+
+const fixtureConfig = liveAcceptanceConfig(process.env);
+base=fixtureConfig.apiBase;
+ feature/neon-only-cutover
 const env={
  customer:randomBytes(32).toString("hex"),
  otherCustomer:randomBytes(32).toString("hex"),
@@ -67,6 +82,11 @@ async function signedJwt(email,password,label){
  return jwt;
 }
 
+ fix/kota-real-role-e2e-20261119
+
+const candidateHealth = expect(await call("/api/health"),200,"candidate health");
+assertCandidateHealth(fixtureConfig, candidateHealth);
+ feature/neon-only-cutover
 [env.owner,env.admin]=await Promise.all([
  signedJwt(required.ownerEmail,required.ownerPassword,"Owner"),
  signedJwt(required.adminEmail,required.adminPassword,"Administrator")
@@ -75,6 +95,10 @@ const ownerIdentity=expect(await call("/api/me","owner"),200,"verified owner ide
 const adminIdentity=expect(await call("/api/me","admin"),200,"verified admin identity");
 if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subject===adminIdentity.subject)
  throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
+ fix/kota-real-role-e2e-20261119
+
+assertFixturePrincipals(fixtureConfig, ownerIdentity, adminIdentity);
+ feature/neon-only-cutover
 const access=expect(await call("/api/owner/access","owner"),200,"approved owner access");
 if(access.approved!==true)throw Error("Staging shop owner has not been approved by the administrator.");
 expect(await call("/api/owner/orders","admin"),403,"administrator denied owner orders");
@@ -84,12 +108,19 @@ const applications=expect(await call("/api/admin/shop-applications","admin"),200
 if(!Array.isArray(applications.applications))throw Error("Admin cannot list shop applications.");
 const shops=expect(await call("/api/owner/shops","owner"),200,"owner shops");
 if(!Array.isArray(shops.shops))throw Error("Owner dashboard shop listing is invalid.");
+ fix/kota-real-role-e2e-20261119
 for(const shop of shops.shops.filter(value=>value.approved===true)){
  const data=expect(await call("/api/owner/shops/"+encodeURIComponent(shop.id)+"/menu","owner"),200,"owner menu");
  const available=(data.items||[]).find(item=>item.available===true&&item.id);
  if(available){env.shop=shop.id;env.menu=available.id;break;}
 }
 if(!env.shop||!env.menu)throw Error("Verified staging owner needs one approved shop with an available priced menu item.");
+
+const fixtureShop = selectFixtureShop(fixtureConfig, shops.shops);
+const fixtureMenu = expect(await call("/api/owner/shops/"+encodeURIComponent(fixtureShop.id)+"/menu","owner"),200,"fixture owner menu");
+const fixtureItem = selectFixtureMenuItem(fixtureConfig, fixtureMenu.items);
+env.shop=fixtureShop.id;env.menu=fixtureItem.id;
+ feature/neon-only-cutover
 console.log("PASS: real signed owner/admin sessions, distinct roles, approved shop and live menu; proceeding with test-flagged orders.");
 const health=expect(await call("/api/health"),200,"health");
 if(health.ok!==true||health.backend!=="neon")throw Error("Staging API is not connected to Neon");
@@ -132,6 +163,14 @@ const adminOrders=expect(await call("/api/admin/orders","admin"),200,"admin orde
 if(!adminOrders.orders?.some(o=>o.id===orderId)||!adminOrders.orders?.some(o=>o.id===secondOrderId))throw Error("Admin cannot see the shop's orders");
 expect(await call("/api/orders/"+orderId+"/items","admin"),200,"admin order items");
 expect(await call("/api/orders/"+orderId+"/history","admin"),200,"admin order history");
+expect(await call("/api/admin/commission","owner"),403,"owner denied administrator commission");
+expect(await call("/api/admin/commission",null),401,"anonymous denied administrator commission");
+const commission=expect(await call("/api/admin/commission","admin"),200,"administrator commission estimates");
+if(commission.commissionPaused!==true||commission.rateCents!==50||commission.thresholdCents!==2000||commission.collectedCommissionCents!==null)
+ throw Error("Commission must remain paused, role-scoped and uncollected, at R0.50 per completed non-test order.");
+if(commission.estimatedCommissionCents!==commission.eligibleCompletedOrders*50||commission.remainingToThresholdCents!==Math.max(0,2000-commission.estimatedCommissionCents))
+ throw Error("Commission forecast or R20 threshold calculation is inconsistent.");
+if(!Array.isArray(commission.shops))throw Error("Commission per-shop ledger is missing.");
 const overview=expect(await call("/api/admin/overview","admin"),200,"admin overview");
 if(overview.commissionPaused!==true||overview.estimatedCommissionCents!==0)throw Error("Launch commission is not paused");
 const rejectedPayload=payload();
@@ -144,4 +183,8 @@ if(rejectedTrack.order?.status!=="rejected")throw Error("Rejected order status d
 expect(await call("/api/orders/"+rejectedId,"customer"),403,"other guest rejected-order isolation");
 for(const route of ["/api/owner/orders","/api/admin/orders"])
  expect(await call(route,null),401,"anonymous "+route);
+ fix/kota-real-role-e2e-20261119
 console.log("PASS: REAL_DEV_INTEGRATION signed owner/admin authentication, guest ordering, idempotency, strict role isolation, order statuses, customer tracking, notifications, admin oversight, rejection flow and paused commission");
+
+console.log("PASS: REAL_DEV_INTEGRATION signed owner/admin authentication, guest ordering, idempotency, strict role isolation, order statuses, customer tracking, notifications, admin oversight, secure commission estimates, rejection flow and paused collection");
+ feature/neon-only-cutover

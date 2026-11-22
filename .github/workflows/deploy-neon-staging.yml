@@ -47,6 +47,9 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm install --no-audit --no-fund
+      - name: Exercise recovery routing against staging Worker code
+        working-directory: worker
+        run: node --test test/recovery-routing.test.mjs
       - name: Deploy development Worker only
         working-directory: worker
         env:
@@ -54,7 +57,23 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "74fdd987dfadfdbb7322d9fc7f705499"
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing staging Cloudflare token"; exit 1; }
-          npx wrangler deploy
+          npx wrangler deploy --var "KOTA_SOURCE_COMMIT:$GITHUB_SHA"
+      - name: Verify live staging password recovery route responses
+        run: |
+          node --input-type=module <<'NODE'
+          const base="https://kota-connect-api-dev.siboniisozulu.workers.dev";
+          for(const path of ["/password-reset-request","/password-reset"]){
+            const response=await fetch(base+path,{redirect:"manual"});
+            const page=await response.text();
+            if(response.status!==200||!/text\/html/.test(response.headers.get("content-type")||"")||!page.includes("Kota Connect"))
+              throw Error("Recovery route "+path+" did not return the staging HTML.");
+          }
+          const invalid=await fetch(base+"/password-reset/request",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:"invalid"})});
+          if(invalid.status!==400)throw Error("Recovery request validation did not reject invalid emails.");
+          const blocked=await fetch(base+"/password-reset-request",{headers:{Origin:"https://not-authorized.example"}});
+          if(blocked.status!==403)throw Error("Recovery path must honor existing origin restrictions.");
+          console.log("PASS: live password recovery pages, request validation and origin rules");
+          NODE
       - name: Verify Neon staging health
         run: |
           curl --fail --silent --show-error https://kota-connect-api-dev.siboniisozulu.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!x.ok||x.backend!=="neon"||!x.authConfigured){console.error("Neon health failed:",JSON.stringify(x));process.exit(1)}console.log("Neon staging health passed")})'
@@ -84,7 +103,7 @@ jobs:
         run: |
           for attempt in $(seq 1 30); do
             page="$(curl --silent --show-error --fail https://kota-connect-neon-staging.pages.dev/neon-admin || true)"
-            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261119-audit-fix-v1'; then
+            if printf '%s' "$page" | grep -q 'neon-app.js?v=20261122-fast-taps-bulk-read-v1'; then
               echo "Matching Pages dashboard client is live"
               exit 0
             fi
@@ -106,4 +125,9 @@ jobs:
           node tests/verify-browser-all-buttons.mjs
       - name: Report separate mandatory real owner-admin acceptance
         run: |
+ fix/kota-real-role-e2e-20261119
           echo "::notice::Real signed-in owner/admin acceptance runs in the separate 'Full Kota Connect owner-admin staging acceptance' workflow. A passing deployment alone does not clear the controlled-test release."
+
+          echo "::notice::Full real owner-admin acceptance is separately REQUIRED before closed testing. A successful staging deploy alone is not sufficient."
+          echo "::notice::See separate 'Full Kota Connect owner-admin staging acceptance' workflow for the authoritative pass/fail result."
+ feature/neon-only-cutover
