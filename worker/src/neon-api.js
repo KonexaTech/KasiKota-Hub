@@ -103,6 +103,15 @@ export async function neonApi(request,env,withDb){
   }
   if(method==="GET"&&path==="/api/admin/orders"){if(!await isNeonAdmin(env,withDb,subject))return json({error:"Admin access required"},403);return json({orders:await withDb(env,async db=>(await db.query("SELECT o.id,o.order_number,o.shop_id,s.name AS shop_name,o.status,o.created_at,o.total_cents,o.customer_name,o.area,o.fulfillment_type FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id ORDER BY o.created_at DESC LIMIT 200")).rows)})}
   if(method==="GET"&&path==="/api/notifications")return json({notifications:await withDb(env,async db=>(await db.query("SELECT n.id,n.order_id,n.kind,n.title,n.body,n.read_at,n.created_at,o.order_number,s.name AS shop_name FROM kc_notifications n LEFT JOIN kc_orders o ON o.id=n.order_id LEFT JOIN kc_shops s ON s.id=o.shop_id WHERE n.recipient_subject=$1 ORDER BY n.created_at DESC LIMIT 100",[subject])).rows)});
+  // Bulk read is one atomic, recipient-scoped UPDATE. Never trust a recipient ID from the client.
+  if(method==="PATCH"&&path==="/api/notifications/read-all"){
+    if(subject.startsWith("guest:"))return json({error:"Signed-in account required"},403);
+    const result=await withDb(env,async db=>db.query(
+      "WITH marked AS (UPDATE kc_notifications SET read_at=now() WHERE recipient_subject=$1 AND read_at IS NULL RETURNING 1) SELECT count(*)::int AS updated FROM marked",
+      [subject]
+    ));
+    return json({ok:true,updated:Number(result.rows?.[0]?.updated)||0});
+  }
   const readNotification=/^\/api\/notifications\/([0-9a-f-]{36})\/read$/.exec(path);
   if(method==="PATCH"&&readNotification&&uuid.test(readNotification[1])){const result=await withDb(env,async db=>db.query("UPDATE kc_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_subject=$2 RETURNING id",[readNotification[1],subject]));return result.rowCount?json({ok:true}):json({error:"Notification not found"},404)}
   if(method==="POST"&&path==="/api/shop-applications"){const d=await readBody(request);if(!d||typeof d.ownerName!=="string"||d.ownerName.trim().length<2||d.ownerName.length>120||typeof d.shopName!=="string"||d.shopName.trim().length<2||d.shopName.length>160||typeof d.phone!=="string"||!d.phone.trim()||d.phone.length>30||typeof d.area!=="string"||!d.area.trim()||d.area.length>160||typeof d.address!=="string"||!d.address.trim()||d.address.length>300||typeof(d.description||"")!=="string"||String(d.description||"").length>2000)return json({error:"Invalid shop application"},400);const result=await withDb(env,async db=>{

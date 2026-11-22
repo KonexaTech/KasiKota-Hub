@@ -19,6 +19,8 @@ function showDashboardPanels(allowed){
   dashboardAccess=Boolean(allowed);
   document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
   if(!dashboardAccess){
+    currentNotifications=[];notificationRevision++;
+    if($("markAllRead"))$("markAllRead").disabled=true;
     for(const id of ["manageShopDialog","customerOrdersDialog","notificationsPanel","commissionDialog"])if($(id)?.open)$(id).close();
     $("notificationList")?.replaceChildren();
     if($("unread"))$("unread").textContent="Sign in to see notifications.";
@@ -84,8 +86,15 @@ async function showIdentity(){
     throw e;
   }
 }
+let signInPending=false;
 $("signin").addEventListener("submit",e=>{
   e.preventDefault();
+  if(signInPending)return;
+  signInPending=true;
+  const submit=$("signin").querySelector('button[type="submit"],button:not([type])');
+  const original=submit?.textContent;
+  if(submit){submit.disabled=true;submit.textContent="Signing in…";submit.setAttribute("aria-busy","true")}
+  out("Signing in…");
   safe(async()=>{
     const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
     if(r.error)throw Error(r.error.message);
@@ -117,7 +126,10 @@ $("signin").addEventListener("submit",e=>{
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  })();
+  })().finally(()=>{
+    signInPending=false;
+    if(submit){submit.disabled=false;submit.textContent=original;submit.removeAttribute("aria-busy")}
+  });
 });
 
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
@@ -165,7 +177,7 @@ $("togglePasswordReset")?.addEventListener("click",()=>{
   if(expanded)$("forgotPassword").focus();
 });
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
-$("signout").onclick=safe(async()=>{await auth.signOut();await showIdentity();out("Signed out")});
+bind("signout",async()=>{await auth.signOut();await showIdentity();out("Signed out")});
 function bind(id,fn){
   const el=$(id);if(!el)return;
   el.onclick=safe(async()=>{
@@ -532,45 +544,69 @@ function renderNotifications(notifications){
     if(!notification.read_at){
       const button=document.createElement("button");button.type="button";button.textContent="Mark as read";
       button.setAttribute("aria-label","Mark "+title.textContent+" as read");
-      button.onclick=safe(async()=>{
-        if(button.disabled)return;
-        button.disabled=true;button.textContent="Saving…";
-        try{await markNotificationRead(notification.id)}finally{button.disabled=false;button.textContent="Mark as read"}
-      });
+      button.onclick=safe(async()=>markNotificationRead(notification.id));
       card.append(button);
     }
     list.append(card);
   }
 }
 let notificationRequest=null;
+let currentNotifications=[],notificationRevision=0,notificationMutationPending=false;
+function displayNotifications(notifications){
+  currentNotifications=notifications;
+  renderNotifications(notifications);
+  const unread=notifications.filter(n=>!n.read_at).length;
+  if($("unread"))$("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
+  if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"+(unread?" ("+unread+" new)":"");
+  if($("openDashboardNotifications"))$("openDashboardNotifications").textContent="View notifications"+(unread?" ("+unread+" new)":"");
+  const bulk=$("markAllRead");
+  if(bulk){bulk.disabled=!notifications.length||notificationMutationPending;bulk.textContent=notificationMutationPending?"Saving…":"Mark all as read";}
+}
 async function pollNotifications(force=false){
-  if(role==="customer"||!dashboardAccess||!force&&document.visibilityState!=="visible")return [];
-  if(notificationRequest){try{await notificationRequest}catch{}if(!force)return []}
+  if(role==="customer"||!dashboardAccess||notificationMutationPending||!force&&document.visibilityState!=="visible")return currentNotifications;
+  if(notificationRequest){try{await notificationRequest}catch{}if(!force||notificationMutationPending)return currentNotifications}
+  const revision=notificationRevision;
   const task=(async()=>{
     try{
       const response=await api("/api/notifications");
-      if(!dashboardAccess)return [];
+      if(!dashboardAccess||notificationMutationPending||revision!==notificationRevision)return currentNotifications;
       const notifications=Array.isArray(response.notifications)?response.notifications:[];
-      renderNotifications(notifications);
-      const unread=notifications.filter(n=>!n.read_at).length;
-      $("unread").textContent=notifications.length+" notification"+(notifications.length===1?"":"s")+" · "+unread+" unread";
-      if($("openNotifications"))$("openNotifications").textContent="🔔 Notifications"+(unread?" ("+unread+" new)":"");
-      if($("openDashboardNotifications"))$("openDashboardNotifications").textContent="View notifications"+(unread?" ("+unread+" new)":"");
+      displayNotifications(notifications);
       return notifications;
     }catch(error){
-      if(dashboardAccess)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
+      if(dashboardAccess&&!notificationMutationPending&&revision===notificationRevision)$("unread").textContent="Unable to refresh notifications. Tap Refresh notifications to retry.";
       if(force)throw error;
-      return [];
+      return currentNotifications;
     }
   })();
   notificationRequest=task;
   try{return await task}finally{if(notificationRequest===task)notificationRequest=null}
 }
+async function commitNotificationReads(path,matching,success){
+  if(notificationMutationPending)return;
+  notificationMutationPending=true;notificationRevision++;
+  const previous=currentNotifications;
+  const now=new Date().toISOString();
+  displayNotifications(previous.map(n=>matching(n)?{...n,read_at:n.read_at||now}:n));
+  try{
+    const result=await api(path,"PATCH");
+    out(success+(result.updated===undefined?"":" ("+result.updated+" updated)"));
+  }catch(error){
+    displayNotifications(previous);
+    throw error;
+  }finally{
+    notificationMutationPending=false;
+    displayNotifications(currentNotifications);
+    pollNotifications(true).catch(error=>out("Unable to refresh notifications: "+error.message));
+  }
+}
 async function markNotificationRead(id){
   if(!orderIdPattern.test(id))throw Error("Choose a valid notification.");
-  await api("/api/notifications/"+encodeURIComponent(id)+"/read","PATCH");
-  await pollNotifications(true);
-  out("Notification marked as read.");
+  return commitNotificationReads("/api/notifications/"+encodeURIComponent(id)+"/read",n=>n.id===id,"Notification marked as read.");
+}
+async function markAllNotificationsRead(){
+  if(!currentNotifications.length)return out("No notifications to mark as read.");
+  return commitNotificationReads("/api/notifications/read-all",()=>true,"All notifications marked as read.");
 }
 const ordersDialog=$("customerOrdersDialog");
 $("openCustomerOrders")?.addEventListener("click",()=>{
@@ -601,6 +637,7 @@ bind("notifications",async()=>{
   out("Notifications updated. "+items.length+" message"+(items.length===1?"":"s")+" shown in Notifications.");
 });
 bind("markRead",async()=>markNotificationRead(required("notificationId","Notification ID")));
+$("markAllRead")?.addEventListener("click",()=>markAllNotificationsRead().catch(error=>out("Error: "+error.message)));
 showIdentity().then(async()=>{
   if(role==="owner"&&dashboardAccess)await loadOwnerOrders(false);
   if(role==="admin"&&dashboardAccess){await loadAdminOrders(false);await loadAdminCommission(false);}
