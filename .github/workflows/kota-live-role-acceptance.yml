@@ -1,12 +1,30 @@
 name: Full Kota Connect owner-admin staging acceptance
 on:
   workflow_dispatch:
+ fix/kota-real-role-e2e-20261119
+  pull_request:
+    branches:
+      - feature/neon-only-cutover
+    paths:
+      - 'worker/test/release-gates.integration.mjs'
+      - '.github/workflows/kota-live-role-acceptance.yml'
+  push:
+    branches:
+      - feature/neon-only-cutover
+    paths:
+      - 'worker/test/release-gates.integration.mjs'
+      - '.github/workflows/kota-live-role-acceptance.yml'
+jobs:
+  live-owner-admin:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover')
+
   push:
     branches:
       - feature/neon-only-cutover
 jobs:
   live-owner-admin:
     if: github.ref == 'refs/heads/feature/neon-only-cutover'
+ feature/neon-only-cutover
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: neon-staging
@@ -24,12 +42,15 @@ jobs:
         run: node --check worker/test/release-gates.integration.mjs
       - name: Run real signed-in owner and administrator acceptance
         env:
+ fix/kota-real-role-e2e-20261119
+
           KOTA_TEST_CONFIRM_WRITES: ${{ vars.KOTA_TEST_CONFIRM_WRITES }}
           KOTA_TEST_SHOP_ID: ${{ vars.KOTA_TEST_SHOP_ID }}
           KOTA_TEST_MENU_ITEM_ID: ${{ vars.KOTA_TEST_MENU_ITEM_ID }}
           KOTA_TEST_OWNER_SUBJECT: ${{ vars.KOTA_TEST_OWNER_SUBJECT }}
           KOTA_TEST_ADMIN_SUBJECT: ${{ vars.KOTA_TEST_ADMIN_SUBJECT }}
           KOTA_TEST_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+ feature/neon-only-cutover
           KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
           KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
           KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}

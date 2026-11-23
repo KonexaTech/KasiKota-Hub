@@ -155,6 +155,9 @@ jobs:
           node tests/verify-browser-all-buttons.mjs
       - name: Report separate mandatory real owner-admin acceptance
         run: |
+ fix/kota-real-role-e2e-20261119
+          echo "::notice::Real signed-in owner/admin acceptance runs in the separate 'Full Kota Connect owner-admin staging acceptance' workflow. A passing deployment alone does not clear the controlled-test release."
+
           echo "::notice::Full real owner-admin acceptance is separately REQUIRED before closed testing. A successful staging deploy alone is not sufficient."
           echo "::notice::See separate 'Full Kota Connect owner-admin staging acceptance' workflow for the authoritative pass/fail result."
  feature/neon-only-cutover

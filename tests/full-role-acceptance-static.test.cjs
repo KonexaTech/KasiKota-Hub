@@ -30,6 +30,7 @@ test("runner has non-production safeguards and only uses explicitly approved fix
  assert.match(script,/assertCandidateHealth\(fixtureConfig/);
  assert.match(script,/assertFixturePrincipals\(fixtureConfig/);
  assert.doesNotMatch(script,/shops\.shops\.filter/);
+
 });
 test("full workflow is separate, non-skipping and uses protected environment secrets",()=>{
  assert.match(workflow,/workflow_dispatch/);
