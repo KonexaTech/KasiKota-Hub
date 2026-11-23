@@ -1,48 +1,76 @@
 name: Neon-only ordering checks
 on:
   pull_request:
+    branches:
+      - feature/neon-only-cutover
   push:
     branches:
       - feature/neon-only-cutover
 jobs:
-  neon-ordering:
+  static-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+ fix/kota-connect-full-audit-20261119
+      - name: Check Neon Worker, customer and dashboard scripts
+
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check Neon Worker and customer ordering scripts
+ feature/neon-only-cutover
         run: |
           node --check worker/src/index.js
-          node --check worker/src/neon-api.js
           node --check worker/src/neon-auth.js
+ fix/kota-connect-full-audit-20261119
+          node --check worker/src/neon-api.js
+
+ feature/neon-only-cutover
           node --check worker/src/guest-auth.js
           node --input-type=module --check < staging-preview/neon-app.js
           node --check staging-preview/kota-customer.mjs
-          node --check staging-preview/shop-discovery.mjs
           node --check staging-preview/kota-shop-registration.mjs
+          node --check staging-preview/shop-discovery.mjs
+ fix/kota-connect-full-audit-20261119
+
+          node --check staging-preview/kota-shop-registration.mjs
+ feature/neon-only-cutover
           node --check tests/verify-live-auth-http.mjs
           node --check tests/verify-live-neon-owner-auth.mjs
           node --check tests/verify-live-guest-order.mjs
           node --check tests/verify-browser-owner-login.mjs
+ fix/kota-connect-full-audit-20261119
+      - name: Run customer journey and release integrity tests
+        run: |
+
           node --check worker/test/release-gates.integration.mjs
+ feature/neon-only-cutover
           node --test tests/postmerge-integrity.test.mjs
           node --test tests/customer-journey.test.mjs
           node --test tests/customer-price-confirm.test.cjs
           node --test tests/three-experiences-static.test.cjs
+ fix/kota-connect-full-audit-20261119
+          node --test tests/status-sync.test.cjs
+          node tests/customer-price-confirm.test.cjs
+          node tests/neon-ordering-only.test.cjs
+      - name: Run Neon security and authentication tests
+        run: |
+
           node --test tests/full-role-acceptance-static.test.cjs
           node --test tests/dashboard-buttons-audit.test.cjs
           node --test tests/status-sync.test.cjs
           node tests/neon-ordering-only.test.cjs
+ feature/neon-only-cutover
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-security-static.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
+ fix/kota-connect-full-audit-20261119
+
           node --test worker/test/checkout-validation.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
           node --test worker/test/notifications-bulk.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
@@ -80,3 +108,4 @@ jobs:
         env:
           KOTA_LOCK_TEST_DATABASE_URL: postgresql://kota_test@127.0.0.1:5432/kota_lock_test
         run: node --test worker/test/checkout-shop-concurrency.test.mjs
+ feature/neon-only-cutover

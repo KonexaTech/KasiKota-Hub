@@ -24,7 +24,11 @@ for (const [path, destination] of Object.entries({
   "index.html":"neon-customer.html",
   "admin-dashboard.html":"neon-admin.html",
   "kota-connect-owners-dashboard-fixed.html":"neon-owner.html",
-  "order-tracking.html":"neon-customer.html"
+  "order-tracking.html":"neon-customer.html",
+  "neon-customer.html":"neon-customer.html",
+  "neon-owner.html":"neon-owner.html",
+  "neon-admin.html":"neon-admin.html",
+  "neon-staging.html":"neon-customer.html"
 })) {
   const source = fs.readFileSync(path,"utf8");
   assert(source.includes("https://kota-connect-neon-staging.pages.dev/"+destination), path+" must use Neon staging");

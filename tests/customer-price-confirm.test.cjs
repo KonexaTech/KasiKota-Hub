@@ -3,6 +3,24 @@ const assert=require("node:assert/strict");
 const html=fs.readFileSync("staging-preview/neon-customer.html","utf8");
 const client=fs.readFileSync("staging-preview/kota-customer.mjs","utf8");
 const discovery=fs.readFileSync("staging-preview/shop-discovery.mjs","utf8");
+ fix/kota-connect-full-audit-20261119
+const backend=fs.readFileSync("worker/src/neon-api.js","utf8");
+assert.match(html,/<select id="area"/,"Area dropdown must remain");
+assert.match(html,/id="shopSearch"/,"Shop-name search must remain");
+assert.match(html,/id="menuItems"/,"Text-only menu must exist");
+assert.doesNotMatch(html,/<img[\s>]/i,"Menu pictures are not part of this release");
+assert.match(client,/button\.addEventListener\("click",\(\)=>chooseItem\(item\)\)/,"Tapping a price must select the menu item");
+assert.match(client,/\$\("confirmStep"\)\.hidden=false/,"Tapping a price must reveal order confirmation");
+assert.match(client,/requestId,shopId:shop\.id/,"Checkout must retain idempotency key");
+assert.match(client,/authorization="Guest "\+token\(\)/,"Guest checkout must not require customer accounts");
+assert.match(client,/paymentMethod/,"Checkout must retain payment selection");
+assert.match(discovery,/fulfillment==="delivery"\?500:0/,"Customer quote must add R5 delivery");
+assert.match(backend,/const delivery=data\.fulfillmentType==="delivery"\?500:0/,"Backend must charge the same R5 delivery fee");
+assert.match(backend,/test_order,client_request_id/,"Staging orders must be flagged as test orders");
+assert.match(backend,/commissionPaused:true/,"Launch commission must remain paused");
+assert.match(html,/<option value="online" disabled>/,"Online payment must remain disabled until verified");
+console.log("PASS customer price-to-confirm, R5 delivery, guest checkout and launch payment controls");
+
 const api=fs.readFileSync("worker/src/neon-api.js","utf8");
 for(const id of ["welcome","proceed","area","shopSearch","shopResults","menuItems","confirmStep","trackStep"])assert.ok(html.includes('id="'+id+'"'));
 assert.ok(html.includes("Delivery (R5 estimated)"));
@@ -19,3 +37,4 @@ assert.ok(discovery.includes('fulfillment==="delivery"?500:0'));
 assert.ok(api.includes('const delivery=data.fulfillmentType==="delivery"?500:0;'));
 assert.ok(api.includes("ON CONFLICT (customer_subject,client_request_id)"));
 console.log("PASS: no-account price-to-confirm ordering, R5 delivery and guest order tracking");
+ feature/neon-only-cutover

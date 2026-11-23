@@ -95,7 +95,7 @@ $("signin").addEventListener("submit",e=>{
   const original=submit?.textContent;
   if(submit){submit.disabled=true;submit.textContent="Signing in…";submit.setAttribute("aria-busy","true")}
   out("Signing in…");
-  safe(async()=>{
+  (async()=>{
     const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
     if(r.error)throw Error(r.error.message);
     if(!r.data)throw Error("Sign-in did not return an account");
@@ -113,9 +113,7 @@ $("signin").addEventListener("submit",e=>{
       const identity=$("identity").textContent||"";
       await auth.signOut();
       await showIdentity();
-      if(identity.startsWith("Owner access denied: administrator accounts")){
-        throw Error("Administrator accounts cannot sign in to the shop-owner dashboard.");
-      }
+      if(identity.startsWith("Owner access denied: administrator accounts"))throw Error("Administrator accounts cannot sign in to the shop-owner dashboard.");
       out("Your shop is awaiting administrator approval. You can sign in to the owner dashboard after approval.");
     }else if(role==="admin"&&!dashboardAccess){
       await auth.signOut();
@@ -126,12 +124,11 @@ $("signin").addEventListener("submit",e=>{
       await pollNotifications(true);
       out(role==="admin"?"Signed in. Administrator access verified.":"Signed in");
     }
-  })().finally(()=>{
+  })().catch(error=>out("Error: "+error.message)).finally(()=>{
     signInPending=false;
     if(submit){submit.disabled=false;submit.textContent=original;submit.removeAttribute("aria-busy")}
   });
 });
-
 bind("sendVerification",async()=>{const email=($("email").value||$("regEmail")?.value||"").trim();if(!email)throw Error("Enter your email address first");const r=await auth.emailOtp.sendVerificationOtp({email,type:"email-verification"});if(r.error)throw Error(r.error.message);out("Verification code requested. Check your inbox and spam folder.")});
 bind("verifyEmail",async()=>{
   const email=($("email").value||$("regEmail")?.value||"").trim(),otp=$("emailVerificationCode")?.value.trim();
@@ -192,6 +189,7 @@ function bind(id,fn){
     }
   });
 }
+
 if(role==="customer"){
 bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);option($("shop"),data.shops,x=>x.name+" — "+x.area);out(data.shops.length+" approved shops")});
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});

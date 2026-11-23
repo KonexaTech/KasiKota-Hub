@@ -36,6 +36,14 @@ jobs:
           node --check worker/src/index.js
           node --check worker/src/neon-auth.js
           node --check worker/src/neon-api.js
+ fix/kota-connect-full-audit-20261119
+          node --input-type=module --check < staging-preview/neon-app.js
+          node --test tests/neon-session-jwt.test.cjs
+          node --test tests/neon-security-static.test.cjs
+          node --test tests/neon-auth-proxy.test.mjs
+          node --test worker/test/guest-auth.test.mjs
+          node --test worker/test/role-policy.test.mjs
+
           node --check worker/src/guest-auth.js
           node --input-type=module --check < staging-preview/neon-app.js
           node --check staging-preview/kota-shop-registration.mjs
@@ -44,6 +52,7 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --check tests/verify-live-guest-order.mjs
           node --check worker/test/release-gates.integration.mjs
+ feature/neon-only-cutover
       - name: Install Worker dependencies
         working-directory: worker
         run: npm install --no-audit --no-fund
@@ -97,6 +106,16 @@ jobs:
           if(!preflight.ok||preflight.headers.get("access-control-allow-origin")!=="https://siboniisozulu-alt.github.io")throw Error("Browser CORS preflight failed");
           console.log("Live anonymous staging API checks passed");
           NODE
+ fix/kota-connect-full-audit-20261119
+      - name: Verify live guest checkout, idempotency, R5 delivery and tracking
+        run: node tests/verify-live-guest-order.mjs
+      - name: Wait for the matching staging Pages frontend
+        run: |
+          url="https://kota-connect-neon-staging.pages.dev/neon-app.js?v=20261119-audit-fix-v1"
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error "$url" | grep -q "Email verification required"; then
+              echo "Matching staging frontend is deployed"
+
       - name: Verify live guest checkout, R5 delivery, idempotency and tracking
         run: node tests/verify-live-guest-order.mjs
       - name: Wait for matching Cloudflare Pages client
@@ -105,13 +124,20 @@ jobs:
             page="$(curl --silent --show-error --fail https://kota-connect-neon-staging.pages.dev/neon-admin || true)"
             if printf '%s' "$page" | grep -q 'neon-app.js?v=20261122-fast-taps-bulk-read-v1'; then
               echo "Matching Pages dashboard client is live"
+ feature/neon-only-cutover
               exit 0
             fi
             sleep 10
           done
+ fix/kota-connect-full-audit-20261119
+          echo "Staging Pages frontend did not reach the audited version in time"
+          exit 1
+      - name: Verify live Neon Auth proxy and unverified-account rejection
+
           echo "Cloudflare Pages did not publish the matching dashboard client"
           exit 1
       - name: Verify live Neon Auth and owner API
+ feature/neon-only-cutover
         run: |
           node tests/verify-live-auth-http.mjs
           node tests/verify-live-neon-owner-auth.mjs
@@ -119,6 +145,10 @@ jobs:
         run: |
           npm install --no-save playwright
           npx playwright install chromium
+ fix/kota-connect-full-audit-20261119
+      - name: Verify customer registration and owner/admin access gates in browser
+        run: node tests/verify-browser-owner-login.mjs
+
       - name: Verify customer registration and owner/admin access gates in a real browser
         run: |
           node tests/verify-browser-owner-login.mjs
@@ -127,3 +157,4 @@ jobs:
         run: |
           echo "::notice::Full real owner-admin acceptance is separately REQUIRED before closed testing. A successful staging deploy alone is not sufficient."
           echo "::notice::See separate 'Full Kota Connect owner-admin staging acceptance' workflow for the authoritative pass/fail result."
+ feature/neon-only-cutover
