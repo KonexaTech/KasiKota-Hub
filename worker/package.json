@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check src/neon-api.js && node --check src/admin-shop-management.js && node --test test/role-policy.test.mjs test/recovery-routing.test.mjs test/guest-auth.test.mjs test/checkout-validation.test.mjs test/checkout-case-regression.test.mjs test/status-lifecycle.test.mjs test/ordering-postgres.test.mjs test/admin-shop-management.test.mjs test/admin-shop-embedded.test.mjs test/admin-shop-postgres.test.mjs test/checkout-shop-lock.test.mjs test/checkout-shop-concurrency.test.mjs test/live-acceptance-guard.test.mjs test/prepare-staging-role-fixtures.test.mjs test/notifications-bulk.test.mjs && node --check test/release-gates.integration.mjs",
+    "check": "node --check src/index.js && node --check src/neon-api.js && node --check src/delivery-source-orders.js && node --check src/admin-shop-management.js && node --test test/delivery-source-lookup.test.mjs test/role-policy.test.mjs test/recovery-routing.test.mjs test/guest-auth.test.mjs test/checkout-validation.test.mjs test/checkout-case-regression.test.mjs test/status-lifecycle.test.mjs test/ordering-postgres.test.mjs test/admin-shop-management.test.mjs test/admin-shop-embedded.test.mjs test/admin-shop-postgres.test.mjs test/checkout-shop-lock.test.mjs test/checkout-shop-concurrency.test.mjs test/live-acceptance-guard.test.mjs test/prepare-staging-role-fixtures.test.mjs test/notifications-bulk.test.mjs && node --check test/release-gates.integration.mjs",
     "test:integration": "node test/release-gates.integration.mjs"
   },
   "dependencies": {
