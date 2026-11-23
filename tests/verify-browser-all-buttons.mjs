@@ -16,6 +16,7 @@ const uuids={
  appApprove:"55555555-5555-4555-8555-555555555555",
  appReject:"66666666-6666-4666-8666-666666666666"
 };
+let dispatchEnabled=false;
 let managementEnabled=false,loseDecisionResponse=false;
 const approvalEvents=[];
 const shop={id:uuids.shop,name:"Kota Audit Test Shop",area:"Newcastle CBD",address:"Mock Street",phone:"0700000000",approved:true};
@@ -81,6 +82,9 @@ function apiResponse(path,method,body){
  if(path==="/api/owner/shops/"+uuids.shop+"/menu/"+uuids.item&&method==="PATCH"){
   const current=menu.find(x=>x.id===uuids.item);Object.assign(current,{name:body.name,price_cents:body.priceCents,available:body.available});return {item:current};
  }
+ if(path==='/api/owner/delivery-capabilities')return {dispatch_enabled:dispatchEnabled};
+ if(path==='/api/owner/orders/'+uuids.order+'/delivery'&&method==='POST')return {delivery:{status:'searching',queued:true}};
+ if(path==='/api/orders/'+uuids.order+'/delivery')return {delivery:{status:'searching',queued:true}};
  if(path==="/api/owner/orders")return {orders:[order]};
  if(path==="/api/owner/orders/"+uuids.order+"/status"&&method==="PATCH"){order.status=body.status;order.owner_note=body.note||null;return {ok:true};}
  if(path==="/api/orders/"+uuids.order)return {order};
@@ -210,6 +214,14 @@ try{
  await owner.locator("#updateStatus").click();
  await resultContains(owner,"Status saved");
  assert.equal(order.status,"accepted");
+ const deliveryAction=owner.getByRole('button',{name:'Request bicycle delivery for selected ready order'});
+ assert.equal(await deliveryAction.isVisible(),false,'Delivery action hidden while server capability is disabled');
+ dispatchEnabled=true;order.status='out_for_delivery';order.fulfillment_type='delivery';
+ await owner.locator('#myOrders').click();
+ await deliveryAction.waitFor({state:'visible'});await deliveryAction.click();
+ await resultContains(owner,'no courier assignment confirmed');
+ order.status='accepted';order.fulfillment_type='pickup';dispatchEnabled=false;
+
  await owner.locator("#closeCustomerOrders").click();
  assert.equal(await owner.locator("#customerOrdersDialog").isVisible(),false);
  await owner.locator("#openDashboardNotifications").click();
@@ -322,6 +334,7 @@ try{
  await customer.waitForFunction(()=>document.getElementById("successMessage")?.textContent?.includes("TEST-LOCAL-001"));
  await customer.locator("#track").click();
  await customer.waitForFunction(()=>document.getElementById("trackingStatus")?.textContent?.includes("TEST-LOCAL-001"));
+ await customer.waitForFunction(()=>document.getElementById('trackingStatus')?.textContent?.includes('queued; no courier assigned'));
  await customer.locator("#openShopRegistration").click();
  assert.equal(await customer.locator("#registerShop").isVisible(),true);
  await customer.locator("#closeRegistration").click();
