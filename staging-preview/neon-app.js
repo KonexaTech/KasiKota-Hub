@@ -215,6 +215,12 @@ refreshCustomerTracking=async function(announce=false){
     lastObservedStatus=order.status;
     $("trackingStatus").textContent="Order "+order.order_number+" — "+order.status.replaceAll("_"," ")+(changed?" (updated)":"");
     $("trackingChecked").textContent="Last checked "+new Date().toLocaleTimeString()+". Checking every 10 seconds while this page is open.";
+    if(order.fulfillment_type==='delivery'){
+      try{
+        const data=await api('/api/orders/'+encodeURIComponent(id)+'/delivery');
+        if(data.delivery?.status&&data.delivery.status!=='not_requested')$("trackingStatus").textContent+=' — Delivery: '+data.delivery.status.replaceAll('_',' ')+(data.delivery.queued?' (queued; no courier assigned)':'');
+      }catch{ /* A disabled delivery integration must not hide ordinary order tracking. */ }
+    }
     rememberTrackedOrder(id);
     if(announce)out(response);
   }catch(error){
@@ -304,6 +310,17 @@ bind("saveMenu",async()=>{
   await viewOwnerMenu();
   out("Menu saved: "+desired.length+" available items; "+removed+" made unavailable. Existing order history preserved.");
 });
+let deliveryDispatchEnabled=false;
+const deliveryButton=document.createElement('button');
+deliveryButton.type='button';deliveryButton.textContent='Request bicycle delivery';deliveryButton.hidden=true;
+deliveryButton.setAttribute('aria-label','Request bicycle delivery for selected ready order');
+$("orderItems").after(deliveryButton);
+deliveryButton.onclick=safe(async()=>{
+  if(deliveryButton.disabled)return;
+  const id=$("orderId").value.trim();
+  deliveryButton.disabled=true;
+  try{const result=await api('/api/owner/orders/'+encodeURIComponent(id)+'/delivery','POST',{});out(result.delivery?.queued?'Delivery queued: no courier assignment confirmed.':result);}finally{updateOwnerOrderSelection();}
+});
 const allowedOwnerTransitions={
   pending:["accepted","rejected","delayed"],
   accepted:["preparing","delayed","rejected"],
@@ -323,6 +340,8 @@ function updateOwnerOrderSelection(){
   const dropdown=$("ownerOrderSelect");
   dropdown.value=selected?.id||"";
   const allowed=selected?nextOwnerStatuses(selected):[];
+  deliveryButton.hidden=!deliveryDispatchEnabled;
+  deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=='delivery'||selected?.status!=='out_for_delivery';
   const next=$("status");
   next.replaceChildren(...(allowed.length?allowed.map(status=>new Option(status.replaceAll("_"," "),status)):[new Option("Choose an order first","")]));
   next.disabled=!allowed.length;
@@ -334,6 +353,9 @@ function updateOwnerOrderSelection(){
 loadOwnerOrders=async function(announce=true){
   const response=await api("/api/owner/orders");
   ownerOrders=Array.isArray(response.orders)?response.orders:[];
+  deliveryDispatchEnabled=false;
+  try{deliveryDispatchEnabled=(await api('/api/owner/delivery-capabilities')).dispatch_enabled===true;}catch{}
+
   const selectedId=$("orderId").value.trim();
   const picker=$("ownerOrderSelect");
   picker.replaceChildren(new Option("Select an incoming order",""),...ownerOrders.map(order=>

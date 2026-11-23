@@ -1,3 +1,5 @@
+import { deliveryEvents } from "./delivery-events.js";
+import { deliveryOrderLookup } from "./delivery-source-orders.js";
 import { neonApi } from "./neon-api.js";
 import { Client } from "pg";
 
@@ -77,6 +79,11 @@ export default {
       return json({message:"If the account exists, a reset email has been sent."},200,headers);
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
+
+    if (path === "/internal/delivery/events") return deliveryEvents(request, env, withDb);
+
+    // Private, default-OFF delivery job source lookup; never available to browsers without a server token.
+    if (path.startsWith("/internal/delivery/orders/")) return deliveryOrderLookup(request, env, withDb);
 
     // Password recovery and staging pages have already been handled; preserve API-only routing for everything else.
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
