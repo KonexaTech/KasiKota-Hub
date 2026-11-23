@@ -1,0 +1,32 @@
+name: Verify Kota protected staging denies anonymous visitors
+on:
+  push:
+    branches:
+      - audit/kota-cloudflare-access-20261123
+    paths:
+      - .github/workflows/verify-kota-staging-access.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  anonymous-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require Cloudflare Access challenge for both protected URLs
+        env:
+          KOTA_STAGING_ROOT: https://kota-connect-neon-staging.pages.dev/
+          KOTA_STAGING_PREVIEW: https://67004320.kota-connect-neon-staging.pages.dev/
+        run: |
+          node --input-type=module <<'NODE'
+          for (const key of ['KOTA_STAGING_ROOT', 'KOTA_STAGING_PREVIEW']) {
+            const u = process.env[key];
+            const response = await fetch(u, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(12000), headers:{ 'accept': 'text/html' } });
+            const location = response.headers.get('location') || '';
+            const challenged = response.status >= 300 && response.status < 400 && (/\/cdn-cgi\/access\/login\b/i.test(location) || /cloudflareaccess\.com/i.test(location));
+            const denied = (response.status === 401 || response.status === 403) && (/cloudflare/i.test(response.headers.get('server')||'') || response.headers.has('cf-ray'));
+            // Fail closed: an HTTP 200, missing redirect location, or an unrelated origin error is NOT secure.
+            if (!challenged && !denied) throw new Error(key+' anonymous request did not encounter an Access challenge; HTTP '+response.status);
+            console.log(key+': anonymous request blocked by Access, HTTP '+response.status);
+          }
+          NODE
