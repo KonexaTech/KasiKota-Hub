@@ -30,3 +30,23 @@ jobs:
             console.log(key+': anonymous request blocked by Access, HTTP '+response.status);
           }
           NODE
+
+  backend-source-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare live development API health with approved frontend commit
+        env:
+          EXPECTED_KOTA_SOURCE_COMMIT: b798b63029d10a568e9aa5cfd1113c1edb5e809d
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://kota-connect-api-dev.siboniisozulu.workers.dev/api/health';
+          const response=await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(12000)});
+          if(response.status!==200)throw Error('Development API health is not available: HTTP '+response.status);
+          const health=await response.json();
+          if(health?.ok!==true||health?.backend!=='neon')throw Error('Development API health is not Neon ready');
+          const source=typeof health.sourceCommit==='string'?health.sourceCommit:'missing';
+          console.log('Neon API health responded; source commit:',source);
+          if(source!==process.env.EXPECTED_KOTA_SOURCE_COMMIT)throw Error('BLOCKED: backend API source does not match approved Pages deployment. Do not execute live fixture writes or claim cross-app readiness.');
+          console.log('API source commit matches the approved frontend deployment.');
+          NODE
