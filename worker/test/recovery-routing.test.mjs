@@ -32,3 +32,19 @@ test("recovery pages require the staging Neon-only mode, and unknown paths remai
 
   assert.equal((await worker.fetch(request("/unrelated"), env)).status, 404);
 });
+
+test("staging entry is bundled locally and does not fetch unpinned remote GitHub HTML", async () => {
+  const oldFetch=globalThis.fetch;
+  let networkCalls=0;
+  globalThis.fetch=async()=>{networkCalls++;throw Error('Unexpected remote staging fetch');};
+  try {
+    const response=await worker.fetch(request('/staging'),env);
+    assert.equal(response.status,200);
+    assert.match(response.headers.get('content-type')||'',/text\/html/);
+    assert.match(response.headers.get('content-security-policy')||'',/default-src 'none'/);
+    const html=await response.text();
+    assert.match(html,/kota-connect-neon-staging\.pages\.dev\/neon-customer\.html/);
+    assert.doesNotMatch(html,/raw\.githubusercontent\.com|<script/i);
+    assert.equal(networkCalls,0);
+  } finally { globalThis.fetch=oldFetch; }
+});
