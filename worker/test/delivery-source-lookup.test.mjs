@@ -8,7 +8,7 @@ const env = { DELIVERY_SOURCE_LOOKUP_ENABLED: "true", DELIVERY_LOOKUP_TOKEN: tok
 const now = Date.parse("2026-11-23T12:00:00Z");
 const valid = () => ({
   id, customer_subject: "customer-1", owner_subject: "owner-1",
-  fulfillment_type: "delivery", status: "preparing", approved: true,
+  fulfillment_type: "delivery", status: "out_for_delivery", approved: true,
   delivery_cents: 1500, pickup_lat: -27.76, pickup_lon: 30.03,
   dropoff_lat: -27.77, dropoff_lon: 30.04,
   route_distance_m: 1700, weight_grams: 2000, currency: "ZAR",
@@ -98,3 +98,5 @@ test("kota lookup fails closed when quote schema/DB access unavailable", async (
   assert.equal(body.error, "delivery_lookup_unavailable");
   assert(!JSON.stringify(body).includes("private database secret"));
 });
+
+test("preparing food is not merchant-ready for dispatch",async()=>{const r=await call({...valid(),status:"preparing"});assert.equal(r.response.status,409);});
