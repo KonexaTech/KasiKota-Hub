@@ -34,3 +34,11 @@ Four local behavioral module tests passed. `worker/test/admin-shop-postgres.test
 - Source syntax and diff whitespace checks PASS.
 
 No migration, deployment, administrator grant, real shop approval/suspension, production data change or monetary operation was executed by this workstream. Staging remains BLOCKED until reviewed activation and real authenticated acceptance.
+
+## Rebased continuation verification — 23 November 2026
+
+The administrator extension is stacked onto core continuation `ababd4b` (PR53), which preserves staging PR52's immediate tap feedback/bulk notification actions and the optional fresh-fixture acceptance helper. The three rebase conflicts were resolved by combining those existing tests with the administrator tests and retaining both delayed-response and lost-response browser scenarios. No working feature or existing test was discarded.
+
+Local final source verification: **114 tests passed, 0 failed, and 2 independent PostgreSQL cases were explicitly skipped** because no local PostgreSQL service was configured. The Worker check passed 40 cases with the same 2 skips. Embedded SQL tests exercised the real schema and transactions; these are not hosted Neon role acceptance. The existing browser audit passed 6 mocked journey groups and 80 API calls, including bulk notifications, immediate feedback and administrator retry/history. Eight HTML entry points parsed, isolated Android web asset preparation passed, Worker dry packaging passed (276.44 KiB), and the production dependency audit reported 0 findings. The initial dependency installation used an unwritable default npm cache; installation and tests were rerun successfully with a writable /tmp cache.
+
+CI must still run both independent PostgreSQL cases on its existing disposable PostgreSQL 17 service and verify the exact pushed head. No migration 009, hosted shop change, administrator activation, public deployment or merge was performed. Keep `KOTA_SHOP_ADMIN_ENABLED` absent/false until migration and live-role acceptance are reviewed. Core live acceptance can proceed separately; the administrator extension is deliberately isolated in a stacked PR.
