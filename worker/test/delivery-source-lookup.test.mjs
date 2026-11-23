@@ -81,6 +81,15 @@ test("kota lookup denies missing quote and invalid, unapproved, unpaid, early or
     assert.equal(r.response.status, 409, JSON.stringify(patch));
   }
 });
+test("kota anonymous customer subjects retain guest-credential identity", async () => {
+  const withDb = async (_, fn) => fn({ query: async () => ({ rows: [
+    { ...valid(), customer_subject: "guest:" + "a".repeat(64) }
+  ] }) });
+  const response = await deliveryOrderLookup(req(), env, withDb, now);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.delivery.customer_subject, "kota:guest:" + "a".repeat(64));
+});
 test("kota lookup fails closed when quote schema/DB access unavailable", async () => {
   const response = await deliveryOrderLookup(req(), env,
     async () => { throw Error("private database secret"); }, now);
