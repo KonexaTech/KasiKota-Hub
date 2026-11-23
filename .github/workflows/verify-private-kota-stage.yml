@@ -1,0 +1,40 @@
+name: Verify Kota QA website and API deny anonymous access
+on:
+  push:
+    branches:
+      - audit/kota-private-access-surfaces-20261123
+    paths:
+      - .github/workflows/verify-private-kota-stage.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-private-surfaces:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject anonymous access to QA Pages, preview and API
+        run: |
+          node --input-type=module <<'NODE'
+          const targets={
+            'staging Pages': 'https://kota-connect-neon-staging.pages.dev/',
+            'staging preview': 'https://67004320.kota-connect-neon-staging.pages.dev/',
+            'staging API': 'https://kota-connect-api-dev.siboniisozulu.workers.dev/api/health'
+          };
+          for(const [label,url] of Object.entries(targets)){
+            const res=await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(15000)});
+            const next=res.headers.get('location')||'';
+            const isChallenge=[301,302,303,307,308].includes(res.status)
+              && (/cloudflareaccess\.com/i.test(next)||/\/cdn-cgi\/access\/login\b/i.test(next));
+            const isDenied=[401,403].includes(res.status) &&
+              (/cloudflare/i.test(res.headers.get('server')||'')||res.headers.has('cf-ray'));
+            if(!isChallenge&&!isDenied){
+              throw new Error('BLOCKED: '+label+' did not present a verifiable Cloudflare Access challenge (HTTP '+res.status+').');
+            }
+            console.log(label+': Access challenge/denial verified (HTTP '+res.status+'); body and credentials not inspected.');
+          }
+          NODE
+      - name: Report remaining protected staging checks
+        run: |
+          echo "::notice::Anonymous access checks do not establish that authorized accounts can log in or that the deployed frontend matches the backend source SHA."
+          echo "::notice::A separate owner-authorized staging test must validate login, source identity, dispatch and real role acceptance before beta."
