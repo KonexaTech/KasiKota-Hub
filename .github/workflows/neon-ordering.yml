@@ -43,7 +43,7 @@ jobs:
           node --test tests/neon-auth-proxy.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
-          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs
+          node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs worker/test/prepare-staging-role-fixtures.test.mjs
           node --test worker/test/notifications-bulk.test.mjs
       - name: Exercise all dashboard buttons in isolated Chromium mocks
         run: |
