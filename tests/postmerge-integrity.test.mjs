@@ -17,3 +17,13 @@ test("staging owner/admin script has no accidentally concatenated branch revisio
  assert.match(s,/bind\("adminOverview"/);
  assert.match(s,/function isSignedJwt/);
 });
+
+test('owner and admin retain one approved dashboard document without duplicate controls',()=>{
+ for(const path of ['staging-preview/neon-owner.html','staging-preview/neon-admin.html']){
+  const text=fs.readFileSync(path,'utf8');
+  assert.equal((text.match(/<!doctype html>/gi)||[]).length,1,path);
+  assert(text.trimStart().startsWith('<!doctype html>'),path);
+  const ids=[...text.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
+  assert.equal(new Set(ids).size,ids.length,'Duplicate dashboard control IDs: '+path);
+ }
+});
