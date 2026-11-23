@@ -14,7 +14,8 @@ export async function neonApi(request,env,withDb){
 
   // Allow no-account customers only on explicitly listed customer routes.
   // Owner/admin routes still require a signed Neon JWT.
-  const subject=(await verifiedNeonSubject(request,env)) ||
+  const bearerSubject=await verifiedNeonSubject(request,env);
+  const subject=bearerSubject ||
     (guestRouteAllowed(method,path)?await verifiedGuestSubject(request):null);
   if(method==="GET"&&path==="/api/shops")return json({shops:(await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone FROM kc_shops WHERE approved=true ORDER BY name LIMIT 100")).rows))});
   const menu=/^\/api\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);

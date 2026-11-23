@@ -1,5 +1,9 @@
 // Live guest checkout and order-tracking acceptance against the Neon staging Worker.
+ fix/kota-connect-full-audit-20261119
+// Creates one explicitly test-flagged delivery order; never prints customer or guest credentials.
+
 // Creates one explicitly test-flagged delivery order; never prints guest credentials.
+ feature/neon-only-cutover
 import { randomBytes, randomUUID } from "node:crypto";
 const base="https://kota-connect-api-dev.siboniisozulu.workers.dev";
 const guestToken=randomBytes(32).toString("hex");
@@ -15,7 +19,13 @@ if(health.status!==200||health.body?.ok!==true||health.body?.backend!=="neon")th
 const catalog=await request("/api/shops");
 if(catalog.status!==200||!Array.isArray(catalog.body?.shops)||!catalog.body.shops.length)throw Error("Approved shop catalog is empty or unavailable");
 let chosen=null;
+ fix/kota-connect-full-audit-20261119
+const orderedShops=[...catalog.body.shops].sort((a,b)=>
+ Number(/staging test kitchen/i.test(b.name||""))-Number(/staging test kitchen/i.test(a.name||""))
+);
+
 const orderedShops=[...catalog.body.shops].sort((a,b)=>Number(/staging test kitchen/i.test(b.name||""))-Number(/staging test kitchen/i.test(a.name||"")));
+ feature/neon-only-cutover
 for(const shop of orderedShops){
  const menu=await request("/api/shops/"+encodeURIComponent(shop.id)+"/menu");
  if(menu.status===200&&Array.isArray(menu.body?.items)&&menu.body.items.length){chosen={shop,item:menu.body.items[0]};break}
