@@ -63,7 +63,10 @@ test("browser app uses same-origin Auth and server-verified role checking",()=>{
   assert.match(app,/\/api\/me/);
   assert.match(app,/me\.admin===false/);
   assert.match(app,/me\.admin===true/);
+  assert.match(app,/ownerAccess\?\.approved===true/);
   const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs","utf8");
   assert.match(registration,/fetch\("\/api\/shop-applications"/);
+  assert.match(registration,/emailOtp\.verifyEmail/);
+  assert.match(registration,/await auth\.signOut\(\)/);
 });
 test.after(()=>{globalThis.fetch=oldFetch});
