@@ -39,6 +39,8 @@ jobs:
           KOTA_PREPARE_FRESH_TEST_SHOP: ${{ inputs.create_fresh_test_shop && 'true' || 'false' }}
           KOTA_TEST_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+          KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
+          KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
           KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
           KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}
           KOTA_TEST_ADMIN_EMAIL: ${{ secrets.KOTA_TEST_ADMIN_EMAIL }}
@@ -53,6 +55,8 @@ jobs:
           KOTA_TEST_ADMIN_SUBJECT: ${{ steps.fresh_fixture.outputs.admin_subject || vars.KOTA_TEST_ADMIN_SUBJECT }}
           KOTA_TEST_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+          KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
+          KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
           KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
           KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}
           KOTA_TEST_ADMIN_EMAIL: ${{ secrets.KOTA_TEST_ADMIN_EMAIL }}
