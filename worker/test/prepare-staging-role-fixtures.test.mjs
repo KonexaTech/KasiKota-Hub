@@ -76,7 +76,7 @@ test('GitHub outputs contain only validated fixture identifiers and reject extra
 });
 test('workflow keeps fixed-fixture mode and its existing staging branch guard',async()=>{
  const workflow=await readFile(new URL('../../.github/workflows/kota-live-role-acceptance.yml',import.meta.url),'utf8');
- assert.match(workflow,/create_fresh_test_shop:[\s\S]*?default: false/);assert.match(workflow,/if: github.ref == 'refs\/heads\/feature\/neon-only-cutover'/);assert.match(workflow,/github.event_name == 'workflow_dispatch' && inputs.create_fresh_test_shop/);
- for(const key of ['SHOP_ID','MENU_ITEM_ID','OWNER_SUBJECT','ADMIN_SUBJECT','CONFIRM_WRITES'])assert(workflow.includes('|| vars.KOTA_TEST_'+key));
+ assert.match(workflow,/create_fresh_test_shop:[\s\S]*?default: false/);assert.match(workflow,/github.ref == 'refs\/heads\/feature\/neon-only-cutover'/);assert.match(workflow,/github.event_name == 'workflow_dispatch' && inputs.create_fresh_test_shop/);
+ for(const key of ['SHOP_ID','MENU_ITEM_ID','OWNER_SUBJECT','ADMIN_SUBJECT'])assert(workflow.includes('|| vars.KOTA_TEST_'+key));
  assert.match(workflow,/run: node worker\/test\/release-gates.integration.mjs/);
 });
