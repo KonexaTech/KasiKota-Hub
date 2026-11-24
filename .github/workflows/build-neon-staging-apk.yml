@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feature/neon-only-cutover
+      - qa/kota-apk-evidence-20261124
 jobs:
   android-debug:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    if: github.ref == 'refs/heads/qa/kota-apk-evidence-20261124'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,9 +65,45 @@ jobs:
           test -s android-staging/android/app/build/outputs/apk/debug/app-debug.apk
           test -s android-staging/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           test ! -e android-staging/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+      - name: Verify signed package and packaged brand artwork
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p device-artifact
+          cp android-staging/android/app/build/outputs/apk/debug/app-debug.apk device-artifact/Kota-Connect-staging.apk
+          APK=device-artifact/Kota-Connect-staging.apk
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee device-artifact/signature.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > device-artifact/package.txt
+          grep -q "package: name='za.co.kotaconnect.staging'" device-artifact/package.txt
+          grep -q "sdkVersion:'26'" device-artifact/package.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-pil
+          /usr/bin/python3 - "$APK" device-artifact/package.txt icon-512.png <<'PY'
+          import io, re, sys, zipfile, hashlib
+          from PIL import Image, ImageChops
+          apk, badging, expected = sys.argv[1:]
+          paths = set(re.findall(r"^application-icon-[0-9]+:'([^']+)'", open(badging).read(), re.M))
+          if not paths:
+              raise SystemExit("APK launcher resource not found")
+          source = Image.open(expected).convert("RGBA")
+          with zipfile.ZipFile(apk) as archive:
+              for path in sorted(paths):
+                  actual = Image.open(io.BytesIO(archive.read(path))).convert("RGBA")
+                  assert actual.size == source.size, (path, actual.size, source.size)
+                  for color in ("black","white"):
+                      bg = Image.new("RGBA", source.size, color)
+                      assert ImageChops.difference(Image.alpha_composite(bg, actual).convert("RGB"), Image.alpha_composite(bg, source).convert("RGB")).getbbox() is None, path
+          with open("device-artifact/launcher-icon.txt","w") as out:
+              out.write("PASS: APK launcher matches existing Kota Connect artwork\n")
+              out.write("Source PNG SHA256: " + hashlib.sha256(open(expected,"rb").read()).hexdigest() + "\n")
+          PY
+          cp icon-512.png device-artifact/launcher-icon.png
+          sha256sum "$APK" > device-artifact/sha256.txt
+          printf '%s\n' "$GITHUB_SHA" > device-artifact/source-commit.txt
+          printf '%s\n' 'Private debug staging APK only; live deployment and device acceptance not verified.' > device-artifact/READ-ME.txt
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
-          name: kota-connect-neon-staging-debug-apk
-          path: android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          name: Kota-Connect-Android-API26-staging-${{ github.sha }}
+          path: device-artifact/
           if-no-files-found: error
