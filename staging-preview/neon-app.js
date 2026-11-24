@@ -301,10 +301,10 @@ bind("saveMenu",async()=>{
   out("Menu saved: "+desired.length+" available items; "+removed+" made unavailable. Existing order history preserved.");
 });
 const allowedOwnerTransitions={
-  pending:["accepted","rejected"],
+  pending:["accepted","rejected","delayed"],
   accepted:["preparing","delayed","rejected"],
   preparing:["ready_for_collection","out_for_delivery","delayed"],
-  delayed:["accepted","preparing","ready_for_collection","out_for_delivery","rejected"],
+  delayed:["accepted","rejected"],
   ready_for_collection:["completed"],
   out_for_delivery:["completed"]
 };

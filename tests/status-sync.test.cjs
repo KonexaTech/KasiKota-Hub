@@ -34,11 +34,24 @@ test("owner transitions match the backend and prevent unsupported delivery state
  const context={};
  vm.runInNewContext(app.slice(start,end)+"\nglobalThis.check=nextOwnerStatuses;",context);
  const check=(status,fulfillment_type)=>Array.from(context.check({status,fulfillment_type}));
- assert.deepEqual(check("pending","pickup"),["accepted","rejected"]);
+ assert.deepEqual(check("pending","pickup"),["accepted","rejected","delayed"]);
  assert.deepEqual(check("accepted","pickup"),["preparing","delayed","rejected"]);
  assert.deepEqual(check("preparing","pickup"),["ready_for_collection","delayed"]);
  assert.deepEqual(check("preparing","delivery"),["out_for_delivery","delayed"]);
  assert.deepEqual(check("ready_for_collection","pickup"),["completed"]);
  assert.deepEqual(check("completed","pickup"),[]);
- assert.ok(worker.includes('const next={pending:["accepted","rejected"]'));
+ assert.deepEqual(check("delayed","delivery"),["accepted","rejected"]);
+ const backend={};const declaration=/const next=([^;]+);/.exec(worker);assert.ok(declaration);
+ vm.runInNewContext("globalThis.policy="+declaration[1],backend);
+ const sql=read("neon/migrations/005_order_status_transitions.sql");
+ const persisted={};
+ for(const match of sql.matchAll(/OLD.status = '([^']+)' AND NEW.status IN \(([^)]+)\)/g))persisted[match[1]]=[...match[2].matchAll(/'([^']+)'/g)].map(value=>value[1]);
+ for(const match of sql.matchAll(/OLD.status = '([^']+)' AND NEW.status = '([^']+)'/g))persisted[match[1]]=[match[2]];
+ for(const status of ["pending","accepted","preparing","delayed","ready_for_collection","out_for_delivery","completed","rejected"]){
+   assert.deepEqual(Array.from(backend.policy[status]||[]).sort(),(persisted[status]||[]).sort(),"API must match persisted transition guard: "+status);
+   for(const fulfillment of ["pickup","delivery"]){
+    const expected=(persisted[status]||[]).filter(value=>(value!=="ready_for_collection"||fulfillment==="pickup")&&(value!=="out_for_delivery"||fulfillment==="delivery")).sort();
+    assert.deepEqual(check(status,fulfillment).sort(),expected,"Owner UI must match database for "+status+"/"+fulfillment);
+   }
+ }
 });

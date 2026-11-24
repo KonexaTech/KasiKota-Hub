@@ -6,6 +6,7 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  "preview_urls": false,
   "vars": {
     "NEON_ONLY_MODE": "true",
     "EXPECTED_NEON_HOST": "ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech",
