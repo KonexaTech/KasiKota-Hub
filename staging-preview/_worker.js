@@ -25,7 +25,10 @@ async function authProxy(request, url) {
   for (const key of ["accept", "accept-language", "content-type", "cookie", "user-agent",
                      "authorization", "x-neon-auth-session-verifier"]) {
     const value = request.headers.get(key);
-    if (value) headers.set(key, value);
+    if (key === "cookie") {
+      const filtered=(value||"").split(";").map(x=>x.trim()).filter(x=>x&&!/^cf_(authorization|appsession|access[^=]*)=/i.test(x)).join("; ");
+      if(filtered)headers.set(key,filtered);
+    } else if(value)headers.set(key,value);
   }
   if (origin) headers.set("origin", origin);
   const target = new URL(AUTH_UPSTREAM + url.pathname.slice("/auth".length) + url.search);
@@ -58,24 +61,21 @@ async function authProxy(request, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if(url.origin!=="https://kota-connect-neon-staging.pages.dev")return new Response("Wrong staging origin",{status:403});
     if (url.pathname === "/auth" || url.pathname.startsWith("/auth/"))
       return authProxy(request, url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     const origin = request.headers.get("Origin");
     if (origin && origin !== url.origin)
       return new Response("Origin not allowed", {status:403});
-    const headers = new Headers(request.headers);
-    // API authenticates via a signed JWT, not a website session cookie.
-    headers.delete("cookie");
-    headers.delete("origin");
-    headers.delete("referer");
-    headers.delete("host");
-    const upstream = new URL(url.pathname + url.search, API_UPSTREAM);
-    const response = await fetch(upstream, {
-      method: request.method,
-      headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-      redirect: "manual"
+    if(typeof env.QA_API?.fetch!=="function")return Response.json({error:"Private QA API binding unavailable"},{status:503,headers:{"cache-control":"no-store"}});
+    const headers=new Headers();
+    for(const key of ["accept","content-type","authorization"]){const value=request.headers.get(key);if(value)headers.set(key,value);}
+    const upstream=new URL(url.pathname+url.search,API_UPSTREAM);
+    const response=await env.QA_API.fetch(upstream.href,{
+      method:request.method,headers,
+      body:request.method==="GET"||request.method==="HEAD"?undefined:request.body,
+      redirect:"manual"
     });
     const resultHeaders = new Headers(response.headers);
     resultHeaders.delete("set-cookie");

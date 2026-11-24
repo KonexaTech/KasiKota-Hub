@@ -74,6 +74,9 @@ async function signedJwt(email,password,label){
 
 const candidateHealth = expect(await call("/api/health"),200,"candidate health");
 assertCandidateHealth(fixtureConfig, candidateHealth);
+const pageSource=await accessFetch(site+"/qa-source.json",{headers:{accept:"application/json"},signal:AbortSignal.timeout(20000),cache:"no-store"});
+const pageMarker=await pageSource.json().catch(()=>null);
+if(!pageSource.ok||pageMarker?.sourceCommit!==fixtureConfig.sourceCommit)throw Error("BLOCKED: Deployed staging Pages source commit does not match expected source.");
 [env.owner,env.admin]=await Promise.all([
  signedJwt(required.ownerEmail,required.ownerPassword,"Owner"),
  signedJwt(required.adminEmail,required.adminPassword,"Administrator")
