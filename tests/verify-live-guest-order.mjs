@@ -2,15 +2,17 @@
 // Does not select an arbitrary merchant or create any order without strict scope.
 // The staging API marks orders as test_order on its dedicated hostname.
 import { randomBytes, randomUUID } from 'node:crypto';
+import { stagingAccessFetch } from '../worker/test/staging-access-fetch.mjs';
 import { approvedGuestTestConfig, assertGuestTestHealth, approvedGuestTestShop, approvedGuestTestMenuItem } from './guest-staging-guard.mjs';
 
 const config=approvedGuestTestConfig(process.env); // Must pass before any network call.
 const base=config.apiBase;
+const accessFetch=stagingAccessFetch(process.env);
 const guestToken=randomBytes(32).toString('hex');
 const otherGuestToken=randomBytes(32).toString('hex');
 const headers={accept:'application/json',authorization:'Guest '+guestToken,'content-type':'application/json'};
 async function request(path,options={}) {
-  const response=await fetch(base+path,{signal:AbortSignal.timeout(15000),cache:'no-store',redirect:'manual',...options});
+  const response=await accessFetch(base+path,{signal:AbortSignal.timeout(15000),cache:'no-store',redirect:'manual',...options});
   const body=await response.json().catch(()=>null);
   return {status:response.status,body};
 }
