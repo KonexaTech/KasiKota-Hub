@@ -4,14 +4,17 @@ import assert from 'node:assert/strict';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stagingAccessFetch } from './staging-access-fetch.mjs';
 import { prepareFreshStagingRoleFixtures, writeFixtureOutputs } from './prepare-staging-role-fixtures.mjs';
 const API='https://kota-connect-api-dev.siboniisozulu.workers.dev',SITE='https://kota-connect-neon-staging.pages.dev';
 const app='11111111-1111-4111-8111-111111111111',shop='22222222-2222-4222-8222-222222222222',item='33333333-3333-4333-8333-333333333333',other='44444444-4444-4444-8444-444444444444';
-const env=()=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/feature/neon-only-cutover',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123456',GITHUB_RUN_ATTEMPT:'1',KOTA_PREPARE_FRESH_TEST_SHOP:'true',KOTA_TEST_EXPECTED_SOURCE_COMMIT:'a'.repeat(40),KOTA_TEST_OWNER_EMAIL:'owner@fixture.example',KOTA_TEST_OWNER_PASSWORD:'not-real-owner-password',KOTA_TEST_ADMIN_EMAIL:'admin@fixture.example',KOTA_TEST_ADMIN_PASSWORD:'not-real-admin-password'});
+const env=()=>({KOTA_CF_ACCESS_CLIENT_ID:'fixture-client-id',KOTA_CF_ACCESS_CLIENT_SECRET:'fixture-client-secret',GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/feature/neon-only-cutover',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123456',GITHUB_RUN_ATTEMPT:'1',KOTA_PREPARE_FRESH_TEST_SHOP:'true',KOTA_TEST_EXPECTED_SOURCE_COMMIT:'a'.repeat(40),KOTA_TEST_OWNER_EMAIL:'owner@fixture.example',KOTA_TEST_OWNER_PASSWORD:'not-real-owner-password',KOTA_TEST_ADMIN_EMAIL:'admin@fixture.example',KOTA_TEST_ADMIN_PASSWORD:'not-real-admin-password'});
 function fixture(options={}){
  const calls=[];let application=null,menu=[];
  const fetchImpl=async(url,init={})=>{
   assert.equal(init.redirect,'manual','Never forward credentials through a redirect');
+  assert.equal(init.headers['cf-access-client-id'],'fixture-client-id');
+  assert.equal(init.headers['cf-access-client-secret'],'fixture-client-secret');
   const parsed=new URL(url);assert([API,SITE].includes(parsed.origin));const path=parsed.pathname,method=init.method||'GET',body=init.body?JSON.parse(init.body):null;
   calls.push({url,method,body,headers:init.headers});
   const reply=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json',...headers}});
@@ -34,7 +37,7 @@ function fixture(options={}){
  return {calls,fetchImpl,businessWrites:()=>calls.filter(call=>call.url.startsWith(API)&&call.method!=='GET')};
 }
 test('fresh-fixture creation requires explicit manual staging source and existing account inputs before any request',async()=>{
- for(const [key,value] of [['KOTA_PREPARE_FRESH_TEST_SHOP','false'],['GITHUB_REF','refs/heads/main'],['GITHUB_EVENT_NAME','push'],['GITHUB_ACTIONS','false'],['GITHUB_SHA','b'.repeat(40)],['GITHUB_RUN_ID','123\n456'],['GITHUB_RUN_ATTEMPT','0'],['KOTA_TEST_OWNER_PASSWORD',''],['KOTA_TEST_ADMIN_EMAIL','owner@fixture.example']]){
+ for(const [key,value] of [['KOTA_CF_ACCESS_CLIENT_SECRET',''],['KOTA_CF_ACCESS_CLIENT_ID',''],['KOTA_PREPARE_FRESH_TEST_SHOP','false'],['GITHUB_REF','refs/heads/main'],['GITHUB_EVENT_NAME','push'],['GITHUB_ACTIONS','false'],['GITHUB_SHA','b'.repeat(40)],['GITHUB_RUN_ID','123\n456'],['GITHUB_RUN_ATTEMPT','0'],['KOTA_TEST_OWNER_PASSWORD',''],['KOTA_TEST_ADMIN_EMAIL','owner@fixture.example']]){
   const f=fixture();await assert.rejects(prepareFreshStagingRoleFixtures({...env(),[key]:value},{fetchImpl:f.fetchImpl}),/BLOCKED/);assert.equal(f.calls.length,0);
  }
 });
@@ -76,7 +79,15 @@ test('GitHub outputs contain only validated fixture identifiers and reject extra
 });
 test('workflow keeps fixed-fixture mode and its existing staging branch guard',async()=>{
  const workflow=await readFile(new URL('../../.github/workflows/kota-live-role-acceptance.yml',import.meta.url),'utf8');
- assert.match(workflow,/create_fresh_test_shop:[\s\S]*?default: false/);assert.match(workflow,/if: github.ref == 'refs\/heads\/feature\/neon-only-cutover'/);assert.match(workflow,/github.event_name == 'workflow_dispatch' && inputs.create_fresh_test_shop/);
- for(const key of ['SHOP_ID','MENU_ITEM_ID','OWNER_SUBJECT','ADMIN_SUBJECT','CONFIRM_WRITES'])assert(workflow.includes('|| vars.KOTA_TEST_'+key));
+ assert.match(workflow,/create_fresh_test_shop:[\s\S]*?default: false/);assert.match(workflow,/github.ref == 'refs\/heads\/feature\/neon-only-cutover'/);assert.match(workflow,/github.event_name == 'workflow_dispatch' && inputs.create_fresh_test_shop/);
+ for(const key of ['SHOP_ID','MENU_ITEM_ID','OWNER_SUBJECT','ADMIN_SUBJECT'])assert(workflow.includes('|| vars.KOTA_TEST_'+key));
  assert.match(workflow,/run: node worker\/test\/release-gates.integration.mjs/);
+});
+
+test('Access transport refuses foreign origins and never follows redirects',async()=>{
+ const calls=[];const request=stagingAccessFetch(env(),async(url,init)=>{calls.push({url,init});return new Response(null,{status:302,headers:{location:'https://untrusted.example'}});});
+ for(const target of ['https://untrusted.example','http://kota-connect-neon-staging.pages.dev','https://kota-connect-neon-staging.pages.dev.untrusted.example','https://user@kota-connect-neon-staging.pages.dev','https://kota-connect-neon-staging.pages.dev/#fragment'])await assert.rejects(request(target),/BLOCKED/);
+ assert.equal(calls.length,0);
+ const response=await request(SITE+'/auth/get-session',{headers:{cookie:'test-session', 'CF-Access-Client-Id':'untrusted-override'},redirect:'follow'});
+ assert.equal(response.status,302);assert.equal(calls.length,1);assert.equal(calls[0].init.redirect,'manual');assert.equal(calls[0].init.headers['cf-access-client-id'],'fixture-client-id');assert.equal(calls[0].init.headers['cf-access-client-secret'],'fixture-client-secret');assert.equal(calls[0].init.headers.cookie,'test-session');
 });

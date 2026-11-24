@@ -20,3 +20,14 @@ test('Neon CI preserves current fixture and independent PostgreSQL coverage afte
   const text=read(path);assert.doesNotMatch(text,/^(?:[ <=>]{0,7})(?:fix\/kota-|feature\/neon-|development\/kota-)/m,'Unresolved merge debris: '+path);
  }
 });
+
+test('live staging writes require manual per-run authorization, never a branch push',()=>{
+ const workflow=read('.github/workflows/kota-live-role-acceptance.yml');
+ assert.match(workflow,/^  workflow_dispatch:/m);
+ assert.doesNotMatch(workflow,/^  (push|pull_request|schedule):/m);
+ assert.match(workflow,/confirm_test_writes:[\s\S]*?required: true[\s\S]*?default: false/);
+ assert.match(workflow,/github\.event_name == 'workflow_dispatch'/);
+ assert.match(workflow,/inputs\.confirm_test_writes == true/);
+ assert.match(workflow,/KOTA_TEST_CONFIRM_WRITES: .*inputs\.confirm_test_writes/);
+ assert.doesNotMatch(workflow,/vars\.KOTA_TEST_CONFIRM_WRITES/);
+});

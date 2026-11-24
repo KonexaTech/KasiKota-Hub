@@ -2,6 +2,7 @@
 import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { stagingAccessFetch } from './staging-access-fetch.mjs';
 const API='https://kota-connect-api-dev.siboniisozulu.workers.dev';
 const SITE='https://kota-connect-neon-staging.pages.dev';
 const STAGING_REF='refs/heads/feature/neon-only-cutover';
@@ -23,8 +24,9 @@ function config(env){
 function id(value,label){if(typeof value!=='string'||!uuid.test(value)||/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(value))blocked('Invalid '+label+' response.');return value.toLowerCase();}
 export async function prepareFreshStagingRoleFixtures(env,{fetchImpl=globalThis.fetch}={}){
  const c=config(env);
+ const accessFetch=stagingAccessFetch(env,fetchImpl);
  async function request(origin,path,{method='GET',headers={},body,expected=200,label}={}){
-  let response;try{response=await fetchImpl(origin+path,{method,headers:{accept:'application/json',...(body===undefined?{}:{'content-type':'application/json'}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});}catch{blocked((label||'Staging')+' request failed. No retry or substitute target was used.');}
+  let response;try{response=await accessFetch(origin+path,{method,headers:{accept:'application/json',...(body===undefined?{}:{'content-type':'application/json'}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});}catch{blocked((label||'Staging')+' request failed. No retry or substitute target was used.');}
   if(response.status!==expected)blocked((label||'Staging')+' returned unexpected HTTP '+response.status+'.');
   let data;try{data=await response.json();}catch{blocked((label||'Staging')+' response was not valid JSON.');}
   return {data,response};
