@@ -1,0 +1,3 @@
+# Kota protected staging handoff
+
+The protected Pages project now has the private QA_API service binding and fail-closed settings. Its existing hosted source is stale; never label it as the newly merged candidate. Use the clean-source builder `node scripts/build-private-kota-qa.mjs` to create a separate Pages upload folder with its own source marker. The live fixture bootstrap and full acceptance now require exact matching Pages and Worker source markers before signing in or creating any fixtures. Keep public Worker previews disabled and existing Access owner protection intact. No credentials in Git, no automatic deployments or production changes. A manual protected deployment and explicit fresh fixture run are still required.

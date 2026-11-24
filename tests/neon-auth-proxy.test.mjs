@@ -15,11 +15,11 @@ globalThis.fetch=async(input,options={})=>{
   headers.append("set-cookie","__Secure-neon-auth.session_token=TEST_COOKIE; Path=/; Domain=ep-lively-leaf-za5rtfhs.neonauth.c-2.eu-west-2.aws.neon.tech; Secure; HttpOnly; SameSite=None; Partitioned");
   return new Response('{"ok":true}',{status:200,headers});
 };
-const assets={ASSETS:{fetch:async()=>new Response("static asset",{status:200})}};
+const assets={ASSETS:{fetch:async()=>new Response("static asset",{status:200})},QA_API:{fetch:(...args)=>globalThis.fetch(...args)}};
 function getCookies(res){return res.headers.getSetCookie?.()||[res.headers.get("set-cookie")].filter(Boolean)}
 test("auth JWT endpoint uses same-origin proxy, sends browser cookie to only fixed Neon host",async()=>{
   calls.length=0;
-  const req=new Request(site+"/auth/token",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque"}});
+  const req=new Request(site+"/auth/token",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque; CF_Authorization=outer-access; CF_AppSession=outer-session"}});
   const res=await worker.fetch(req,assets);
   assert.equal(res.status,200);
   assert.equal(calls.length,1);
@@ -45,9 +45,10 @@ test("rejects cross-origin sign-in requests",async()=>{
 });
 test("API routes keep signed bearer token but never forward browser session cookie",async()=>{
   calls.length=0;
-  const req=new Request(site+"/api/me",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque",Authorization:"Bearer signed.jwt.signature"}});
+  const req=new Request(site+"/api/me",{headers:{Cookie:"__Secure-neon-auth.session_token=opaque",Authorization:"Bearer signed.jwt.signature","CF-Access-Jwt-Assertion":"outer-access"}});
   await worker.fetch(req,assets);
   assert.equal(calls[0].headers.get("cookie"),null);
+  assert.equal(calls[0].headers.get("cf-access-jwt-assertion"),null);
   assert.equal(calls[0].headers.get("authorization"),"Bearer signed.jwt.signature");
   assert.equal(calls[0].url,"https://kota-connect-api-dev.siboniisozulu.workers.dev/api/me");
 });
@@ -70,3 +71,5 @@ test("browser app uses same-origin Auth and server-verified role checking",()=>{
   assert.match(registration,/await auth\.signOut\(\)/);
 });
 test.after(()=>{globalThis.fetch=oldFetch});
+
+test("missing private API binding cannot fall back to a public endpoint",async()=>{calls.length=0;const res=await worker.fetch(new Request(site+"/api/me"),{ASSETS:assets.ASSETS});assert.equal(res.status,503);assert.equal(calls.length,0);});
