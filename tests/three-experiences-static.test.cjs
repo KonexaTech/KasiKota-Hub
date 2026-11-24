@@ -38,11 +38,7 @@ test("customer dashboard buttons link to existing, role-gated owner and admin pa
 });
 
 test("shop registration opens as a modal from customer navigation",()=>{
- fix/kota-connect-full-audit-20261119
-  assert.match(customer,/href="#registerShop" id="openShopRegistration">Register your shop<\/a>/);
-
   assert.match(customer,/id="openShopRegistration"/);
- feature/neon-only-cutover
   assert.match(customer,/<dialog id="registerShop"/);
   assert.match(customer,/id="shopRegistrationForm"/);
   assert.match(customer,/id="regOwnerName"/);
