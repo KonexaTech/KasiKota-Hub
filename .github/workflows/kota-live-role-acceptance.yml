@@ -2,17 +2,19 @@ name: Full Kota Connect owner-admin staging acceptance
 on:
   workflow_dispatch:
     inputs:
+      confirm_test_writes:
+        description: Authorize isolated staging TEST orders for this run only
+        type: boolean
+        required: true
+        default: false
       create_fresh_test_shop:
         description: Create a new TEST shop/menu using existing staging test accounts; never change an existing merchant
         type: boolean
         required: false
         default: false
-  push:
-    branches:
-      - feature/neon-only-cutover
 jobs:
   live-owner-admin:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/neon-only-cutover' && inputs.confirm_test_writes == true
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: neon-staging
@@ -44,7 +46,7 @@ jobs:
         run: node worker/test/prepare-staging-role-fixtures.mjs
       - name: Run real signed-in owner and administrator acceptance
         env:
-          KOTA_TEST_CONFIRM_WRITES: ${{ steps.fresh_fixture.outputs.confirm_writes || vars.KOTA_TEST_CONFIRM_WRITES }}
+          KOTA_TEST_CONFIRM_WRITES: ${{ inputs.confirm_test_writes && 'true' || 'false' }}
           KOTA_TEST_SHOP_ID: ${{ steps.fresh_fixture.outputs.shop_id || vars.KOTA_TEST_SHOP_ID }}
           KOTA_TEST_MENU_ITEM_ID: ${{ steps.fresh_fixture.outputs.menu_item_id || vars.KOTA_TEST_MENU_ITEM_ID }}
           KOTA_TEST_OWNER_SUBJECT: ${{ steps.fresh_fixture.outputs.owner_subject || vars.KOTA_TEST_OWNER_SUBJECT }}
