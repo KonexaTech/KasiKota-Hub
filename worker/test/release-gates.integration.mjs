@@ -4,6 +4,7 @@
 // Never prints passwords, session cookies, JWTs, account IDs, or customer tokens.
 // All orders created through the dev Worker are flagged as test orders.
 import { randomBytes, randomUUID } from "node:crypto";
+import { stagingAccessFetch } from "./staging-access-fetch.mjs";
 import { liveAcceptanceConfig, assertCandidateHealth, assertFixturePrincipals, selectFixtureShop, selectFixtureMenuItem } from "./live-acceptance-guard.mjs";
 
 let base=process.env.KOTA_TEST_API_BASE||"https://kota-connect-api-dev.siboniisozulu.workers.dev";
@@ -25,6 +26,7 @@ if(missing.length)throw Error(
 );
 const fixtureConfig = liveAcceptanceConfig(process.env);
 base=fixtureConfig.apiBase;
+const accessFetch=stagingAccessFetch(process.env);
 const env={
  customer:randomBytes(32).toString("hex"),
  otherCustomer:randomBytes(32).toString("hex"),
@@ -39,7 +41,7 @@ async function call(path,principal,method="GET",body){
  const headers={accept:"application/json"};
  if(principal)headers.authorization=authorization(principal);
  if(body!==undefined)headers["content-type"]="application/json";
- const response=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000),cache:"no-store"});
+ const response=await accessFetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000),cache:"no-store"});
  const data=await response.json().catch(()=>null);
  return {status:response.status,data};
 }
@@ -51,18 +53,18 @@ function expect(result,status,path){
 // Same-origin Neon Auth sign-in; the cookie is used only to obtain a short-lived signed JWT.
 // No browser-readable cookie is needed and nothing is written to repository configuration.
 async function signedJwt(email,password,label){
- const login=await fetch(site+"/auth/sign-in/email",{
+ const login=await accessFetch(site+"/auth/sign-in/email",{
   method:"POST",headers:{"content-type":"application/json",origin:site,accept:"application/json"},
   body:JSON.stringify({email,password}),signal:AbortSignal.timeout(20000),redirect:"manual"
  });
  if(!login.ok)throw Error(label+" sign-in failed with HTTP "+login.status+"; check staging account verification and Actions secrets.");
  const cookie=(login.headers.getSetCookie?.()||[]).map(value=>value.split(";")[0]).filter(Boolean).join("; ");
  if(!cookie)throw Error(label+" sign-in returned no Neon session cookie.");
- const session=await fetch(site+"/auth/get-session",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
+ const session=await accessFetch(site+"/auth/get-session",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
  const sessionData=await session.json().catch(()=>null);
  if(!session.ok||!sessionData?.user)throw Error(label+" session could not be restored.");
  if(sessionData.user.emailVerified!==true)throw Error(label+" staging email is not verified.");
- const tokenResponse=await fetch(site+"/auth/token",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
+ const tokenResponse=await accessFetch(site+"/auth/token",{headers:{cookie,accept:"application/json"},signal:AbortSignal.timeout(20000)});
  const tokenData=await tokenResponse.json().catch(()=>null);
  const jwt=tokenData?.token??tokenData?.data?.token;
  if(!tokenResponse.ok||typeof jwt!=="string"||jwt.split(".").length!==3)
