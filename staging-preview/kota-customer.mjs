@@ -99,6 +99,11 @@ async function trackOrder(announce=true){
     if(!record?.status)throw Error("Could not load this order.");
     $("trackingStatus").textContent="Order "+record.order_number+": "+record.status.replaceAll("_"," ")+(record.owner_note?" — "+record.owner_note:"");
     $("trackingChecked").textContent="Updated "+new Date().toLocaleTimeString()+". Checking every 10 seconds while this page is open.";
+    if(record.fulfillment_type==='delivery'){
+      try{const data=await api('/orders/'+encodeURIComponent(id)+'/delivery');
+        if(data.delivery?.status&&data.delivery.status!=='not_requested')$("trackingStatus").textContent+=' — Delivery: '+data.delivery.status.replaceAll('_',' ')+(data.delivery.queued?' (queued; no courier assigned)':'');
+      }catch{ /* Ordinary order tracking remains available when delivery is disabled. */ }
+    }
     try{localStorage.setItem(ORDER_KEY,id)}catch{}
     if(announce)jump("trackStep");
   }catch(e){$("trackingChecked").textContent="Tracking could not update: "+e.message;if(announce)throw e}
