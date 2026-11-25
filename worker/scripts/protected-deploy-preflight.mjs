@@ -71,9 +71,17 @@ async function protections(){
 }
 async function database(){
   requireThat(e.KOTA_STAGING_DATABASE_URL,'Missing restricted staging database credential');
-  const u=new URL(e.KOTA_STAGING_DATABASE_URL);
-  requireThat(['postgres:','postgresql:'].includes(u.protocol)&&u.hostname===host&&u.pathname==='/neondb'&&u.username==='kc_staging_worker'&&u.password&&(!u.port||u.port==='5432')&&!u.hash,'Wrong staging database target or role');
-  requireThat([...u.searchParams.keys()].every(k=>k==='sslmode'||k==='channel_binding'),'Unsupported database connection option');
+  let u;
+  try { u=new URL(e.KOTA_STAGING_DATABASE_URL); }
+  catch { throw Error('Invalid staging database URL format'); }
+  requireThat(['postgres:','postgresql:'].includes(u.protocol),'Unexpected staging database URL protocol');
+  requireThat(u.hostname===host,'Staging database host does not match the reviewed direct Neon endpoint');
+  requireThat(u.pathname==='/neondb','Staging database name does not match neondb');
+  requireThat(u.username==='kc_staging_worker','Staging database role does not match kc_staging_worker');
+  requireThat(Boolean(u.password),'Staging database password is missing');
+  requireThat(!u.port||u.port==='5432','Staging database port is not 5432');
+  requireThat(!u.hash,'Staging database URL contains an unsupported fragment');
+  requireThat([...u.searchParams.keys()].every(k=>k==='sslmode'||k==='channel_binding'),'Unsupported staging database URL options');
   u.searchParams.delete('sslmode');u.searchParams.delete('channel_binding');
   const client=new Client({connectionString:u.href,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:10000,statement_timeout:10000});
   try{
