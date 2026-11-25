@@ -59,6 +59,10 @@ export default {
         return json({ status: "unavailable", database: "failed" }, 503, headers);
       }
     }
+ fix/kota-staging-recovery-routing-20261119
+
+
+ feature/neon-only-cutover
     if (env.NEON_ONLY_MODE !== "true") return json({ error: "Neon-only mode not configured" }, 503, headers);
 
     const workerOrigin = new URL(request.url).origin;
@@ -98,7 +102,10 @@ export default {
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
 
+ fix/kota-staging-recovery-routing-20261119
+
     // Password recovery and staging pages have already been handled; preserve API-only routing for everything else.
+ feature/neon-only-cutover
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
 
     try {
