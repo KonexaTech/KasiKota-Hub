@@ -22,7 +22,9 @@ async function cf(path,label){
 }
 function denied(r){
   const location=r.headers.get('location')||'';
-  return (r.status===302||r.status===303||r.status===307||r.status===308)&&(/\.cloudflareaccess\.com\//i.test(location)||/\/cdn-cgi\/access\/login/i.test(location)) || (r.status===401||r.status===403)&&Boolean(r.headers.get('cf-access-denied')||r.headers.get('cf-access-login-url'));
+  // Strict service-token authentication returns 401/403 on failure; it does not
+  // have to attach the legacy Access response headers.
+  return (r.status===302||r.status===303||r.status===307||r.status===308)&&(/\.cloudflareaccess\.com\//i.test(location)||/\/cdn-cgi\/access\/login/i.test(location)) || r.status===401 || r.status===403;
 }
 async function probe(url,label,authenticated=false){
   stage='Cloudflare Access probe: '+label;
