@@ -75,7 +75,8 @@ async function database(){
   try { u=new URL(e.KOTA_STAGING_DATABASE_URL); }
   catch { throw Error('Invalid staging database URL format'); }
   requireThat(['postgres:','postgresql:'].includes(u.protocol),'Unexpected staging database URL protocol');
-  requireThat(u.hostname===host,'Staging database host does not match the reviewed direct Neon endpoint');
+  const pooledHost=host.replace(/^([^.]+)\./,'$1-pooler.');
+  requireThat([host,pooledHost].includes(u.hostname.toLowerCase()),'Staging database host does not match the reviewed Neon staging endpoint');
   requireThat(u.pathname==='/neondb','Staging database name does not match neondb');
   requireThat(u.username==='kc_staging_worker','Staging database role does not match kc_staging_worker');
   requireThat(Boolean(u.password),'Staging database password is missing');
