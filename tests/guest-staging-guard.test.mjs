@@ -37,6 +37,15 @@ test('only exact TEST merchant and exact TEST menu are eligible',()=>{
   for(const item of [{...menu,name:'Real Kota'}, {...menu,id:c.shopId}, {...menu,price_cents:'100'}, {...menu,available:false}]) assert.throws(()=>approvedGuestTestMenuItem(c,[item]),/BLOCKED/);
   assert.deepEqual(approvedGuestTestMenuItem(c,[menu]),menu);
 });
+test('the exact pre-existing staging fixture labels remain eligible without broadening UUID scope',()=>{
+  const c=approvedGuestTestConfig(env());
+  const stagingShop={id:c.shopId,name:'Kota Connect Staging Test Kitchen',approved:true};
+  const stagingItem={id:c.menuItemId,name:'Classic Kota (TEST)',available:true,price_cents:4500};
+  assert.deepEqual(approvedGuestTestShop(c,[stagingShop]),stagingShop);
+  assert.deepEqual(approvedGuestTestMenuItem(c,[stagingItem]),stagingItem);
+  assert.throws(()=>approvedGuestTestShop(c,[{...stagingShop,id:'33333333-3333-4333-8333-333333333333'}]),/BLOCKED/);
+  assert.throws(()=>approvedGuestTestMenuItem(c,[{...stagingItem,id:'33333333-3333-4333-8333-333333333333'}]),/BLOCKED/);
+});
 test('live guest probe must scope shop/item and health before any POST',()=>{
   const source=readFileSync('tests/verify-live-guest-order.mjs','utf8');
   assert.match(source,/approvedGuestTestConfig\(process\.env\)/);
