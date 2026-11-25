@@ -78,15 +78,21 @@ async function database(){
     requireThat(result.rows.length===1&&Object.values(result.rows[0]).every(x=>x===true),'Restricted runtime privilege checks failed');
   }finally{await client.end().catch(()=>{});}
 }
+let stage='staging source verification';
 try{
   requireThat(mode==='before'||mode==='after','Invalid preflight mode');
   requireThat(e.GITHUB_REF==='refs/heads/feature/neon-only-cutover'&&/^[a-f0-9]{40}$/.test(e.GITHUB_SHA||'')&&e.EXPECTED_SOURCE===e.GITHUB_SHA,'Wrong branch or source');
+  stage='Cloudflare target and Access protection';
   await protections();
-  if(mode==='before')await database();
+  if(mode==='before'){stage='restricted Neon database connection and permissions';await database();}
   if(mode==='after'){
     const health=await (await probe(api+'/api/health',true)).json();
     const marker=await (await probe(site+'/qa-source.json',true)).json();
     requireThat(health.ok===true&&health.backend==='neon'&&health.sourceCommit===e.GITHUB_SHA&&marker.sourceCommit===e.GITHUB_SHA,'Deployed source markers do not match');
   }
   console.log('Protected staging '+mode+' gate passed.');
-}catch{console.error('BLOCKED: staging target, access, database or exact-source verification did not pass. No credentials logged.');process.exitCode=1;}
+}catch(error){
+  const allowed=new Set(['Invalid preflight mode','Wrong branch or source','Missing protected staging credentials','Unexpected Pages target','Pages source or automatic deployment settings changed','Private Pages binding missing','Unexpected Pages domain','Worker endpoint settings changed','Unexpected Worker database binding','Required Access applications missing','Access policy does not match reviewed owner and QA service identity','Anonymous Access denial not established','QA service identity not accepted','Preview is not Access protected','Missing restricted staging database credential','Wrong staging database target or role','Unsupported database connection option','Restricted runtime privilege checks failed','Deployed source markers do not match']);
+  const reason=error instanceof Error&&allowed.has(error.message)?error.message:'network or credential verification failed';
+  console.error('BLOCKED at '+stage+': '+reason+'. No credentials logged.');process.exitCode=1;
+}
