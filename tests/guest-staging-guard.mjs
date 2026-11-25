@@ -4,7 +4,9 @@ export const KOTA_QA_API = 'https://kota-connect-api-dev.siboniisozulu.workers.d
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sha = /^[0-9a-f]{40}$/;
 const blocked = message => { throw new Error('BLOCKED: ' + message); };
-const testName = value => typeof value === 'string' && /^TEST(?:[\s_-]|$)/i.test(value.trim());
+// The existing isolated fixture uses "Staging Test Kitchen" and "(TEST)" suffixes.
+// Exact UUID allowlisting below remains mandatory; a name match alone never selects a shop.
+const testName = value => typeof value === 'string' && /(?:^|[^a-z0-9])TEST(?:$|[^a-z0-9])/i.test(value.trim());
 export function approvedGuestTestConfig(env) {
   if (env.KOTA_GUEST_TEST_CONFIRM_WRITES !== 'true') blocked('Explicit approval to create an isolated TEST order is required.');
   const raw = env.KOTA_GUEST_TEST_API_BASE ?? KOTA_QA_API;
