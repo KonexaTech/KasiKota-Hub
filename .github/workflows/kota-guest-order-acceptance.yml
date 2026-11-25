@@ -2,21 +2,6 @@ name: Kota Connect anonymous guest-order acceptance
 on:
   workflow_dispatch:
     inputs:
-      source_commit:
-        description: Exact source commit already deployed to both private Kota staging endpoints
-        required: true
-        type: string
-        default: 1e319ed0280e876cf34d314e3e9e6c396fe73521
-      test_shop_id:
-        description: Existing approved TEST shop only
-        required: true
-        type: string
-        default: 25c0c003-5e54-4847-a0f0-d3ce9eeea354
-      test_menu_item_id:
-        description: Existing available TEST menu item only
-        required: true
-        type: string
-        default: cd4f253e-7e24-442a-8707-5a74cb05cdb6
       confirm_test_order:
         description: Create exactly one test-flagged anonymous order in private staging
         required: true
@@ -37,17 +22,17 @@ jobs:
       contents: read
     env:
       KOTA_GUEST_TEST_CONFIRM_WRITES: ${{ inputs.confirm_test_order && 'true' || 'false' }}
-      KOTA_GUEST_TEST_SOURCE_COMMIT: ${{ inputs.source_commit }}
-      KOTA_GUEST_TEST_SHOP_ID: ${{ inputs.test_shop_id }}
-      KOTA_GUEST_TEST_MENU_ITEM_ID: ${{ inputs.test_menu_item_id }}
+      KOTA_GUEST_TEST_SOURCE_COMMIT: 8e60b3d48fa7ec5d3c6adc4e3f1caddc91f55fe3
+      KOTA_GUEST_TEST_SHOP_ID: 25c0c003-5e54-4847-a0f0-d3ce9eeea354
+      KOTA_GUEST_TEST_MENU_ITEM_ID: cd4f253e-7e24-442a-8707-5a74cb05cdb6
       KOTA_GUEST_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
       KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
       KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
     steps:
-      - name: Check out the exact deployed source under test
+      - name: Check out the exact reviewed source under test
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: 8e60b3d48fa7ec5d3c6adc4e3f1caddc91f55fe3
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
