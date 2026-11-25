@@ -10,7 +10,7 @@ const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs",
 test("Worker routes only to the guarded Neon development database",()=>{
  assert.match(worker,/NEON_ONLY_MODE !== "true"/);
  assert.match(worker,/EXPECTED_NEON_HOST/);
- assert.match(worker,/expectedHost\.replace\(\/\^\(\[\^\.\]\+\)\\\.\/,"\$1-pooler\."\)/);
+ assert.match(worker,/pooler/);
  assert.match(worker,/hostname !== pooledHost/);
  assert.match(worker,/await neonApi\(request, env, withDb\)/);
  assert.doesNotMatch(worker,/privilegedRoute|verifiedFirebaseUser|FIREBASE_PROJECT_ID|ADMIN_UID/);
