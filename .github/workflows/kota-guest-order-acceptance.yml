@@ -1,0 +1,48 @@
+name: Kota Connect anonymous guest-order acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_test_order:
+        description: Create exactly one test-flagged anonymous order in private staging
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: kota-anonymous-guest-order-acceptance
+  cancel-in-progress: false
+jobs:
+  guest-order:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_test_order == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: neon-staging
+    permissions:
+      contents: read
+    env:
+      KOTA_GUEST_TEST_CONFIRM_WRITES: ${{ inputs.confirm_test_order && 'true' || 'false' }}
+      KOTA_GUEST_TEST_SOURCE_COMMIT: 8e60b3d48fa7ec5d3c6adc4e3f1caddc91f55fe3
+      KOTA_GUEST_TEST_SHOP_ID: 25c0c003-5e54-4847-a0f0-d3ce9eeea354
+      KOTA_GUEST_TEST_MENU_ITEM_ID: cd4f253e-7e24-442a-8707-5a74cb05cdb6
+      KOTA_GUEST_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+      KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
+      KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Check out the exact reviewed source under test
+        uses: actions/checkout@v4
+        with:
+          ref: 8e60b3d48fa7ec5d3c6adc4e3f1caddc91f55fe3
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify pinned source and local guards
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$KOTA_GUEST_TEST_SOURCE_COMMIT"
+          node --check tests/verify-live-guest-order.mjs
+          node --test tests/guest-staging-guard.test.mjs worker/test/guest-auth.test.mjs
+      - name: Run anonymous checkout and isolation acceptance against private staging
+        run: node tests/verify-live-guest-order.mjs
