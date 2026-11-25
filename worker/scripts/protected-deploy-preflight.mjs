@@ -59,7 +59,7 @@ async function protections(){
   for(const url of urls){
     requireThat(denied(await probe(url,'anonymous '+(url.includes('.pages.dev')?'Pages':'Worker'))),'Anonymous Access denial not established');
     const authenticated=await probe(url,'service identity '+(url.includes('.pages.dev')?'Pages':'Worker'),true);
-    requireThat(authenticated.ok,'QA service identity returned HTTP '+authenticated.status);
+    requireThat(!denied(authenticated),'QA service identity denied by Access (HTTP '+authenticated.status+')');
   }
   if(p.latest_deployment?.url){
     const preview=new URL(p.latest_deployment.url);
@@ -106,7 +106,7 @@ try{
   console.log('Protected staging '+mode+' gate passed.');
 }catch(error){
   const message=error instanceof Error?error.message:'';
-  const safe=/^(?:Cloudflare API returned HTTP|QA service identity returned HTTP|Post-deployment Worker health returned HTTP|Post-deployment Pages marker returned HTTP) (\d{3})$/.exec(message);
+  const safe=/^(?:Cloudflare API returned HTTP|QA service identity denied by Access \(HTTP|Post-deployment Worker health returned HTTP|Post-deployment Pages marker returned HTTP) (\d{3})\)?$/.exec(message);
   const allowed=new Set(['Invalid preflight mode','Wrong branch or source','Missing protected staging credentials','Unexpected Pages target','Pages source or automatic deployment settings changed','Private Pages binding missing','Unexpected Pages domain','Worker endpoint settings changed','Unexpected Worker database binding','Required Access applications missing','Access policy does not match reviewed owner and QA service identity','Anonymous Access denial not established','QA service identity not accepted','Preview is not Access protected','Missing restricted staging database credential','Wrong staging database target or role','Unsupported database connection option','Restricted runtime privilege checks failed','Deployed source markers do not match','Cloudflare API network request failed','Cloudflare API response was not valid JSON','Cloudflare API returned an unsuccessful response','Cloudflare Access probe network request failed']);
   const reason=safe?safe[0]:allowed.has(message)?message:'unexpected verification failure';
   console.error('BLOCKED at '+stage+': '+reason+'. No credentials logged.');process.exitCode=1;
