@@ -32,7 +32,11 @@ async function withDb(env, callback) {
   let hostname;
   try { hostname = new URL(connectionString).hostname.toLowerCase(); }
   catch { throw new Error("Invalid database connection URL"); }
-  if (hostname !== env.EXPECTED_NEON_HOST.toLowerCase())
+  const expectedHost = env.EXPECTED_NEON_HOST.toLowerCase();
+  // Neon exposes a transaction-pooler hostname by adding "-pooler" to the
+  // endpoint label. Accept only that exact paired hostname or the direct host.
+  const pooledHost = expectedHost.replace(/^([^.]+)\./, "$1-pooler.");
+  if (hostname !== expectedHost && hostname !== pooledHost)
     throw new Error("Database target does not match development branch");
   const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
   try { await client.connect(); return await callback(client); }
