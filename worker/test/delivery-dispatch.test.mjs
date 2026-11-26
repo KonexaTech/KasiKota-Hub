@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash,createHmac,randomUUID } from 'node:crypto';
-import { dispatchDelivery,deliveryTracking } from '../src/delivery-dispatch.js';
+import { dispatchDelivery,deliveryTracking,deliveryCapabilities } from '../src/delivery-dispatch.js';
 import { guestRouteAllowed } from '../src/guest-auth.js';
 import { deliveryFixture,orderId,jobId } from './delivery-fixture.mjs';
 const secret='intake-secret-'.repeat(4),env={DELIVERY_DISPATCH_ENABLED:'true',DELIVERY_SOURCE_LOOKUP_ENABLED:'true',DELIVERY_LOOKUP_TOKEN:'lookup-'.repeat(8),DELIVERY_INTAKE_SECRET:secret,DELIVERY_SERVICE_URL:'https://delivery.example',NEON_AUTH_URL:'https://auth.example'};
+test('owner dispatch capability stays hidden until the dedicated bridge DB role is configured',()=>{
+ assert.equal(deliveryCapabilities(env).dispatch_enabled,false);
+ const bridgeUrl='postgresql://kc_delivery_bridge:fake-test-password@ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech/neondb?sslmode=require';
+ assert.equal(deliveryCapabilities({...env,KOTA_DELIVERY_DATABASE_URL:bridgeUrl}).dispatch_enabled,true);
+});
 test('dispatch remains OFF without all explicit server configuration and rejects unsafe endpoints before SQL',async()=>{
  let reads=0;const db=()=>{reads++;throw Error('Must not connect');};
  for(const config of [{},{...env,DELIVERY_DISPATCH_ENABLED:'false'},{...env,DELIVERY_SERVICE_URL:'http://delivery.example'},{...env,DELIVERY_SERVICE_URL:'https://delivery.example/other'},{...env,DELIVERY_SOURCE_LOOKUP_ENABLED:'false'}])assert.equal((await dispatchDelivery(config,db,orderId,'owner')).status,503);
