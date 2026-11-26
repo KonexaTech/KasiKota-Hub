@@ -1,4 +1,5 @@
 import {eligibleDeliverySnapshot} from './delivery-source-orders.js';
+import { deliveryDatabaseConnectionString } from './deliveryDb.mjs';
 const prefix='kc',source='kota',path='/v1/delivery/jobs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
 const states=['searching','assigned','ready','collected','enroute','delivered','cancelled','failed'];
@@ -8,7 +9,7 @@ function config(env){
  if(env.DELIVERY_DISPATCH_ENABLED!=='true'||env.DELIVERY_SOURCE_LOOKUP_ENABLED!=='true'||typeof env.DELIVERY_LOOKUP_TOKEN!=='string'||new TextEncoder().encode(env.DELIVERY_LOOKUP_TOKEN).length<32||typeof env.DELIVERY_INTAKE_SECRET!=='string'||new TextEncoder().encode(env.DELIVERY_INTAKE_SECRET).length<32)return null;
  try{const url=new URL(env.DELIVERY_SERVICE_URL);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')return null;return url.origin;}catch{return null;}
 }
-export function deliveryCapabilities(env){return {dispatch_enabled:Boolean(config(env))};}
+export function deliveryCapabilities(env){let databaseReady=false;try{deliveryDatabaseConnectionString(env);databaseReady=true;}catch{}return {dispatch_enabled:Boolean(config(env)&&databaseReady)};}
 async function participant(db,id,subject,ownerOnly){
  const row=(await db.query('SELECT o.id,o.customer_subject,s.owner_subject,EXISTS(SELECT 1 FROM '+prefix+'_admins WHERE subject=$2) AS admin FROM '+prefix+'_orders o LEFT JOIN '+prefix+'_shops s ON s.id=o.shop_id WHERE o.id=$1',[id,subject])).rows[0];
  return row&&(ownerOnly?row.owner_subject===subject:(row.customer_subject===subject||row.owner_subject===subject||row.admin===true));
