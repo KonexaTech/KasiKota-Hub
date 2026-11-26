@@ -30,7 +30,8 @@ export async function dispatchDelivery(env,withDb,id,subject){
  if(![200,201].includes(response.status))return json({error:response.status===409?'Delivery source conflict; review required':'Delivery service unavailable; retry safely'},response.status===409?409:503);
  const result=await response.json();if(typeof result?.job_id!=='string'||!uuid.test(result.job_id)||!states.includes(result.status))return json({error:'Invalid delivery acknowledgement; retry safely'},502);
  return await withDb(env,async db=>{await db.query('BEGIN');try{
-  await db.query('SELECT id FROM '+prefix+'_orders WHERE id=$1 FOR UPDATE',[id]);
+  // Serialize delivery writes without granting UPDATE on source orders or locking customer rows.
+  await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[id]);
   if(!await participant(db,id,subject,true)){await db.query('ROLLBACK');return json({error:'Order not found'},404);}
   const pinned=(await db.query('SELECT job_id FROM '+prefix+'_delivery_dispatches WHERE order_id=$1',[id])).rows[0],state=(await db.query('SELECT job_id FROM '+prefix+'_delivery_state WHERE order_id=$1',[id])).rows[0];
   if((pinned&&pinned.job_id!==result.job_id)||(state&&state.job_id!==result.job_id)){await db.query('ROLLBACK');return json({error:'Delivery job conflict; review required'},409);}
