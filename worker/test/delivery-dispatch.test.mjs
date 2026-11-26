@@ -4,7 +4,7 @@ import { createHash,createHmac,randomUUID } from 'node:crypto';
 import { dispatchDelivery,deliveryTracking,deliveryCapabilities } from '../src/delivery-dispatch.js';
 import { guestRouteAllowed } from '../src/guest-auth.js';
 import { deliveryFixture,orderId,jobId } from './delivery-fixture.mjs';
-const secret='intake-secret-'.repeat(4),env={DELIVERY_DISPATCH_ENABLED:'true',DELIVERY_SOURCE_LOOKUP_ENABLED:'true',DELIVERY_LOOKUP_TOKEN:'lookup-'.repeat(8),DELIVERY_INTAKE_SECRET:secret,DELIVERY_SERVICE_URL:'https://delivery.example',NEON_AUTH_URL:'https://auth.example'};
+const secret='intake-secret-'.repeat(4),env={DELIVERY_DISPATCH_ENABLED:'true',DELIVERY_SOURCE_LOOKUP_ENABLED:'true',DELIVERY_LOOKUP_TOKEN:'lookup-'.repeat(8),DELIVERY_INTAKE_SECRET:secret,DELIVERY_SERVICE_URL:'https://delivery.example',NEON_AUTH_URL:'https://auth.example',EXPECTED_NEON_HOST:'ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech'};
 test('owner dispatch capability stays hidden until the dedicated bridge DB role is configured',()=>{
  assert.equal(deliveryCapabilities(env).dispatch_enabled,false);
  const bridgeUrl='postgresql://kc_delivery_bridge:fake-test-password@ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech/neondb?sslmode=require';
