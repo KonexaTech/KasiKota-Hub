@@ -24,16 +24,16 @@ const dispatchSource = readFileSync(new URL("../src/delivery-dispatch.js", impor
 const callbackSource = readFileSync(new URL("../src/delivery-events.js", import.meta.url), "utf8");
 const bridgeGrants = readFileSync(new URL("../../docs/release/delivery-bridge-role-grants.PROPOSED.sql", import.meta.url), "utf8");
 test("delivery bridge serializes source-order writes without UPDATE privilege on customer orders",()=>{
- assert.match(dispatchSource,/pg_advisory_xact_lock\\(hashtextextended\\(\\$1, 0\\)\\)/);
- assert.match(callbackSource,/pg_advisory_xact_lock\\(hashtextextended\\(\\$1, 0\\)\\)/);
- assert.doesNotMatch(dispatchSource,/kc_orders WHERE id=\\$1 FOR UPDATE/);
- assert.doesNotMatch(callbackSource,/FOR UPDATE OF o/);
+ assert.ok(dispatchSource.includes("pg_advisory_xact_lock(hashtextextended($1, 0))"));
+ assert.ok(callbackSource.includes("pg_advisory_xact_lock(hashtextextended($1, 0))"));
+ assert.ok(!dispatchSource.includes("kc_orders WHERE id=$1 FOR UPDATE"));
+ assert.ok(!callbackSource.includes("FOR UPDATE OF o"));
 });
 test("bridge grants are column-scoped and cannot read customer PII or unrelated business tables",()=>{
- assert.match(bridgeGrants,/REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public/);
- assert.match(bridgeGrants,/GRANT SELECT \\(id, customer_subject, fulfillment_type, status, delivery_cents, shop_id\\)/);
- assert.match(bridgeGrants,/GRANT SELECT \\(id, owner_subject, approved\\)/);
- assert.doesNotMatch(bridgeGrants,/GRANT SELECT ON public\\.kc_orders/);
- assert.doesNotMatch(bridgeGrants,/GRANT SELECT ON public\\.kc_shops/);
- assert.doesNotMatch(bridgeGrants,/GRANT SELECT ON public\\.kc_admins/);
+ assert.ok(bridgeGrants.includes("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public"));
+ assert.ok(bridgeGrants.includes("GRANT SELECT (id, customer_subject, fulfillment_type, status, delivery_cents, shop_id)"));
+ assert.ok(bridgeGrants.includes("GRANT SELECT (id, owner_subject, approved)"));
+ assert.ok(!bridgeGrants.includes("GRANT SELECT ON public.kc_orders"));
+ assert.ok(!bridgeGrants.includes("GRANT SELECT ON public.kc_shops"));
+ assert.ok(!bridgeGrants.includes("GRANT SELECT ON public.kc_admins"));
 });
