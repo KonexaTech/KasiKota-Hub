@@ -12,7 +12,9 @@ test("Worker routes only to the guarded Neon development database",()=>{
  assert.match(worker,/EXPECTED_NEON_HOST/);
  assert.match(worker,/pooler/);
  assert.match(worker,/hostname !== pooledHost/);
- assert.match(worker,/await neonApi\(request, env, withDb\)/);
+ assert.match(worker,/await neonApi\(request, env, withDb, withDeliveryDb\)/);
+ assert.match(worker,/deliveryDatabaseConnectionString/);
+ assert.match(worker,/KOTA_DELIVERY_DATABASE_URL/);
  assert.doesNotMatch(worker,/privilegedRoute|verifiedFirebaseUser|FIREBASE_PROJECT_ID|ADMIN_UID/);
 });
 test("Neon Auth verifies signed EdDSA JWTs with JWKS and issuer, without an unsupported audience requirement",()=>{
