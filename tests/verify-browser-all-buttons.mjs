@@ -27,6 +27,7 @@ let notifications=[
  {id:uuids.notif,kind:"new_order",title:"New test order",body:"Mock only",read_at:null},
  {id:uuids.notif2,kind:"order_status",title:"Order update",body:"preparing",read_at:null}
 ];
+let dispatchEnabled=false;
 const calls=[];
 const authModule=[
   'export function createAuthClient(){',
@@ -79,8 +80,11 @@ function apiResponse(path,method,body){
  if(path==="/api/owner/shops/"+uuids.shop+"/menu/"+uuids.item&&method==="PATCH"){
   const current=menu.find(x=>x.id===uuids.item);Object.assign(current,{name:body.name,price_cents:body.priceCents,available:body.available});return {item:current};
  }
+ if(path==="/api/owner/delivery-capabilities")return {dispatch_enabled:dispatchEnabled};
+ if(path==="/api/owner/orders/"+uuids.order+"/delivery"&&method==="POST")return {delivery:{status:"searching",queued:true}};
  if(path==="/api/owner/orders")return {orders:[order]};
  if(path==="/api/owner/orders/"+uuids.order+"/status"&&method==="PATCH"){order.status=body.status;order.owner_note=body.note||null;return {ok:true};}
+ if(path==="/api/orders/"+uuids.order+"/delivery")return {delivery:{status:"searching",queued:true}};
  if(path==="/api/orders/"+uuids.order)return {order};
  if(path==="/api/orders/"+uuids.order+"/items")return {items:[{name:"Classic Kota",quantity:1,price_cents:menu[0].price_cents}]};
  if(path==="/api/orders/"+uuids.order+"/history")return {events:[{status:order.status}]};
@@ -200,6 +204,13 @@ try{
  await owner.locator("#updateStatus").click();
  await resultContains(owner,"Status saved");
  assert.equal(order.status,"accepted");
+ dispatchEnabled=true;order.status="out_for_delivery";order.fulfillment_type="delivery";
+ await owner.locator("#myOrders").click();
+ await resultContains(owner,"orders");
+ const deliveryAction=owner.getByRole("button",{name:"Request bicycle delivery for selected ready order"});
+ assert.equal(await deliveryAction.isVisible(),true,"Delivery action appears only when the server enables dispatch for a ready delivery order");
+ await deliveryAction.click();
+ await resultContains(owner,"Delivery queued");
  await owner.locator("#closeCustomerOrders").click();
  assert.equal(await owner.locator("#customerOrdersDialog").isVisible(),false);
  await owner.locator("#openDashboardNotifications").click();
@@ -295,6 +306,8 @@ try{
  await customer.waitForFunction(()=>document.getElementById("successMessage")?.textContent?.includes("TEST-LOCAL-001"));
  await customer.locator("#track").click();
  await customer.waitForFunction(()=>document.getElementById("trackingStatus")?.textContent?.includes("TEST-LOCAL-001"));
+ await customer.waitForFunction(()=>document.getElementById("trackingStatus")?.textContent?.includes("Delivery: searching"));
+ assert.ok(calls.some(x=>x.includes("GET /api/orders/"+uuids.order+"/delivery")),"Customer delivery tracking request not observed");
  await customer.locator("#openShopRegistration").click();
  assert.equal(await customer.locator("#registerShop").isVisible(),true);
  await customer.locator("#closeRegistration").click();
