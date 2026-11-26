@@ -1,3 +1,4 @@
+import { dispatchDelivery, deliveryTracking, deliveryCapabilities } from "./delivery-dispatch.js";
 import { verifiedNeonSubject, isNeonAdmin } from "./neon-auth.js";
 import { isOwnerOnlyRoute } from "./role-policy.js";
 import { guestRouteAllowed, verifiedGuestSubject } from "./guest-auth.js";
@@ -42,6 +43,13 @@ export async function neonApi(request,env,withDb){
       return {approved:shop,applicationStatus:application?.status||null};
     });
     return json(access);
+  }
+  if(method==="GET"&&path==="/api/owner/delivery-capabilities")return json(deliveryCapabilities(env));
+  const deliveryRoute=/^\\/api\\/(owner\\/)?orders\\/([0-9a-f-]{36})\\/delivery$/.exec(path);
+  if(deliveryRoute&&uuid.test(deliveryRoute[2])){
+    if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDb,deliveryRoute[2].toLowerCase(),subject);
+    if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDb,deliveryRoute[2].toLowerCase(),subject);
+    return json({error:"Method not allowed"},405);
   }
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
