@@ -23,7 +23,9 @@ export async function deliveryEvents(request,env,withDb){
  if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length!==fields.length||fields.some(k=>!Object.hasOwn(data,k))||data.version!==1||typeof data.event_id!=='string'||!uuid.test(data.event_id)||typeof data.source_order_id!=='string'||!uuid.test(data.source_order_id)||typeof data.job_id!=='string'||!uuid.test(data.job_id)||typeof data.sequence!=='string'||!/^\d{1,19}$/.test(data.sequence)||BigInt(data.sequence)<1n||BigInt(data.sequence)>9223372036854775807n||!states.includes(data.status)||typeof data.occurred_at!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(data.occurred_at)||!Number.isFinite(Date.parse(data.occurred_at)))return json({error:'Invalid callback'},400);
  try{return await withDb(env,async db=>{
   await db.query('BEGIN');try{
-   const order=(await db.query('SELECT o.id,o.fulfillment_type,o.customer_subject,s.owner_subject FROM '+prefix+'_orders o JOIN '+prefix+'_shops s ON s.id=o.shop_id WHERE o.id=$1 FOR UPDATE OF o',[data.source_order_id])).rows[0];
+   // Serialize callbacks per source order without granting UPDATE on customer order rows.
+   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[data.source_order_id]);
+   const order=(await db.query('SELECT o.id,o.fulfillment_type,o.customer_subject,s.owner_subject FROM '+prefix+'_orders o JOIN '+prefix+'_shops s ON s.id=o.shop_id WHERE o.id=$1',[data.source_order_id])).rows[0];
    if(!order||order.fulfillment_type!=='delivery'){await db.query('ROLLBACK');return json({error:'Delivery order not found'},404);}
    const dispatched=(await db.query('SELECT job_id,intake_status FROM '+prefix+'_delivery_dispatches WHERE order_id=$1',[data.source_order_id])).rows[0];
    if(dispatched&&dispatched.job_id!==data.job_id){await db.query('ROLLBACK');return json({error:'Delivery job conflict'},409);}
