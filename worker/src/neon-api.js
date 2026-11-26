@@ -45,7 +45,7 @@ export async function neonApi(request,env,withDb){
     return json(access);
   }
   if(method==="GET"&&path==="/api/owner/delivery-capabilities")return json(deliveryCapabilities(env));
-  const deliveryRoute=/^\\/api\\/(owner\\/)?orders\\/([0-9a-f-]{36})\\/delivery$/.exec(path);
+  const deliveryRoute=/^\/api\/(owner\/)?orders\/([0-9a-f-]{36})\/delivery$/.exec(path);
   if(deliveryRoute&&uuid.test(deliveryRoute[2])){
     if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDb,deliveryRoute[2].toLowerCase(),subject);
     if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDb,deliveryRoute[2].toLowerCase(),subject);
