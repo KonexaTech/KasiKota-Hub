@@ -13,6 +13,7 @@ Baseline PR55: `1de3e2d1ceb074696847cb14d0c502b45b19f932`; verified local snapsh
 ## Approval and rollback
 
 Private settings remain default OFF: `DELIVERY_SOURCE_LOOKUP_ENABLED`, `DELIVERY_LOOKUP_TOKEN`; `DELIVERY_DISPATCH_ENABLED`, `DELIVERY_SERVICE_URL`, `DELIVERY_INTAKE_SECRET`; `DELIVERY_CALLBACKS_ENABLED`, `DELIVERY_CALLBACK_SECRET`. Keys must be distinct per source/direction, at least 32 bytes, never client configuration.
+KOTA dispatch also requires a dedicated Cloudflare Access service token (`DELIVERY_CF_ACCESS_CLIENT_ID` and `DELIVERY_CF_ACCESS_CLIENT_SECRET`) scoped by an explicit service-token-only Allow policy on the Delivery staging Access application; do not use `any_valid_service_token`.
 
 Existing quote-schema and new callback-schema SQL files in this directory are **PROPOSED ONLY**. No remote DDL, deployment or secrets were changed. Before owner-approved staging application: inspect actual schema/roles, capture recoverable snapshot, review least-privilege server grants/RLS and approve quotation/payment/COD policy. Zero-valued isolated test quotes do not establish free-delivery business rules.
 

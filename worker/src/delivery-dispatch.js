@@ -1,14 +1,15 @@
 import {eligibleDeliverySnapshot} from './delivery-source-orders.js';
+import { deliveryDatabaseConnectionString } from './deliveryDb.mjs';
 const prefix='kc',source='kota',path='/v1/delivery/jobs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
 const states=['searching','assigned','ready','collected','enroute','delivered','cancelled','failed'];
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const hex=value=>[...new Uint8Array(value)].map(x=>x.toString(16).padStart(2,'0')).join('');
 function config(env){
- if(env.DELIVERY_DISPATCH_ENABLED!=='true'||env.DELIVERY_SOURCE_LOOKUP_ENABLED!=='true'||typeof env.DELIVERY_LOOKUP_TOKEN!=='string'||new TextEncoder().encode(env.DELIVERY_LOOKUP_TOKEN).length<32||typeof env.DELIVERY_INTAKE_SECRET!=='string'||new TextEncoder().encode(env.DELIVERY_INTAKE_SECRET).length<32)return null;
+ if(env.DELIVERY_DISPATCH_ENABLED!=='true'||env.DELIVERY_SOURCE_LOOKUP_ENABLED!=='true'||typeof env.DELIVERY_LOOKUP_TOKEN!=='string'||new TextEncoder().encode(env.DELIVERY_LOOKUP_TOKEN).length<32||typeof env.DELIVERY_INTAKE_SECRET!=='string'||new TextEncoder().encode(env.DELIVERY_INTAKE_SECRET).length<32||typeof env.DELIVERY_CF_ACCESS_CLIENT_ID!=='string'||!env.DELIVERY_CF_ACCESS_CLIENT_ID||typeof env.DELIVERY_CF_ACCESS_CLIENT_SECRET!=='string'||!env.DELIVERY_CF_ACCESS_CLIENT_SECRET)return null;
  try{const url=new URL(env.DELIVERY_SERVICE_URL);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')return null;return url.origin;}catch{return null;}
 }
-export function deliveryCapabilities(env){return {dispatch_enabled:Boolean(config(env))};}
+export function deliveryCapabilities(env){let databaseReady=false;try{deliveryDatabaseConnectionString(env);databaseReady=true;}catch{}return {dispatch_enabled:Boolean(config(env)&&databaseReady)};}
 async function participant(db,id,subject,ownerOnly){
  const row=(await db.query('SELECT o.id,o.customer_subject,s.owner_subject,EXISTS(SELECT 1 FROM '+prefix+'_admins WHERE subject=$2) AS admin FROM '+prefix+'_orders o LEFT JOIN '+prefix+'_shops s ON s.id=o.shop_id WHERE o.id=$1',[id,subject])).rows[0];
  return row&&(ownerOnly?row.owner_subject===subject:(row.customer_subject===subject||row.owner_subject===subject||row.admin===true));
@@ -25,7 +26,7 @@ export async function dispatchDelivery(env,withDb,id,subject){
  const digest=hex(await crypto.subtle.digest('SHA-256',encode(body))),canonical=['konexa-delivery-v1','POST',path,source,timestamp,digest].join('\n');
  const key=await crypto.subtle.importKey('raw',encode(env.DELIVERY_INTAKE_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
  const signature='v1='+hex(await crypto.subtle.sign('HMAC',key,encode(canonical)));
- const response=await fetch(origin+path,{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'content-type':'application/json','x-konexa-source':source,'x-konexa-timestamp':timestamp,'x-konexa-signature':signature},body});
+ const response=await fetch(origin+path,{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'content-type':'application/json','x-konexa-source':source,'x-konexa-timestamp':timestamp,'x-konexa-signature':signature,'CF-Access-Client-Id':env.DELIVERY_CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':env.DELIVERY_CF_ACCESS_CLIENT_SECRET},body});
  if(![200,201].includes(response.status))return json({error:response.status===409?'Delivery source conflict; review required':'Delivery service unavailable; retry safely'},response.status===409?409:503);
  const result=await response.json();if(typeof result?.job_id!=='string'||!uuid.test(result.job_id)||!states.includes(result.status))return json({error:'Invalid delivery acknowledgement; retry safely'},502);
  return await withDb(env,async db=>{await db.query('BEGIN');try{
