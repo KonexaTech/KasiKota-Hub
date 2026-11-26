@@ -7,7 +7,7 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
 const next={pending:["accepted","rejected","delayed"],accepted:["preparing","delayed","rejected"],preparing:["ready_for_collection","out_for_delivery","delayed"],delayed:["accepted","rejected"],ready_for_collection:["completed"],out_for_delivery:["completed"]};
 async function readBody(request){try{return await request.json()}catch{return null}}
-export async function neonApi(request,env,withDb){
+export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(!path.startsWith("/api/"))return null;
   if(method==="GET"&&path==="/api/health"){try{const db=await withDb(env,async c=>(await c.query("SELECT 1 AS ok")).rows[0]);return json({ok:db?.ok===1,backend:"neon",authConfigured:Boolean(env.NEON_AUTH_URL||env.NEON_AUTH_BASE_URL),sourceCommit:typeof env.KOTA_SOURCE_COMMIT==="string"&&/^[0-9a-f]{40}$/.test(env.KOTA_SOURCE_COMMIT)?env.KOTA_SOURCE_COMMIT:null})}catch(e){const code=typeof e?.code==="string"&&/^[A-Z0-9_]{2,12}$/.test(e.code)?e.code:"UNKNOWN";return json({ok:false,backend:"neon",database:"unavailable",errorCode:code,errorType:typeof e?.name==="string"?e.name.slice(0,50):"Unknown",phase: /connect|socket|network|fetch|timeout|tls|ssl/i.test(String(e?.message||""))?"connection":"database",diagnostic: /Database target does not match development branch/i.test(String(e?.message||""))?"wrong_database_target":/Expected development database host not configured/i.test(String(e?.message||""))?"missing_target_guard":/Invalid database connection URL/i.test(String(e?.message||""))?"invalid_database_url":/Database binding not configured/i.test(String(e?.message||""))?"missing_binding":/password authentication failed/i.test(String(e?.message||""))?"authentication":/getaddrinfo|ENOTFOUND|dns/i.test(String(e?.message||""))?"dns":/certificate|tls|ssl/i.test(String(e?.message||""))?"tls":/timeout|ETIMEDOUT/i.test(String(e?.message||""))?"timeout":/connect|socket|network|fetch/i.test(String(e?.message||""))?"network":"unclassified"},503)}}
@@ -47,8 +47,8 @@ export async function neonApi(request,env,withDb){
   if(method==="GET"&&path==="/api/owner/delivery-capabilities")return json(deliveryCapabilities(env));
   const deliveryRoute=/^\/api\/(owner\/)?orders\/([0-9a-f-]{36})\/delivery$/.exec(path);
   if(deliveryRoute&&uuid.test(deliveryRoute[2])){
-    if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDb,deliveryRoute[2].toLowerCase(),subject);
-    if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDb,deliveryRoute[2].toLowerCase(),subject);
+    if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
+    if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
     return json({error:"Method not allowed"},405);
   }
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
