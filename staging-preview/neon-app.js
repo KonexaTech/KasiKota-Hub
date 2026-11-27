@@ -240,8 +240,12 @@ refreshCustomerTracking=async function(announce=false){
     if(order.fulfillment_type==="delivery"){
       try{
         const data=await api("/api/orders/"+encodeURIComponent(id)+"/delivery");
-        if(data.delivery?.status&&data.delivery.status!=="not_requested")$("trackingStatus").textContent+=" — Delivery: "+data.delivery.status.replaceAll("_"," ")+(data.delivery.queued?" (queued; no courier assigned)":"");
-      }catch{ /* A disabled delivery integration must not hide ordinary order tracking. */ }
+        if($("orderId").value.trim()!==id)return;
+        const labels={searching:"Finding a driver",assigned:"Driver assigned",ready:"Ready for collection",collected:"Collected by driver",enroute:"Out for delivery",delivered:"Delivered",cancelled:"Delivery cancelled",failed:"Delivery failed"};
+        const deliveryStatus=data.delivery?.status;
+        if(Object.hasOwn(labels,deliveryStatus))$("trackingStatus").textContent="Order "+order.order_number+" — "+labels[deliveryStatus];
+        else if(order.status==="ready_for_collection")$("trackingStatus").textContent="Order "+order.order_number+" — Ready; driver request not yet confirmed";
+      }catch{if($("orderId").value.trim()===id)$("trackingStatus").textContent+=" — Live driver status unavailable";}
     }
     rememberTrackedOrder(id);
     if(announce)out(response);
