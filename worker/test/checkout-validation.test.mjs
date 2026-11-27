@@ -36,15 +36,15 @@ test('guest checkout prices come from server menu and preserve delivery details 
     if(sql.startsWith('SELECT id,order_number,status'))return {rows:[]};
     if(sql.startsWith('SELECT id,owner_subject'))return {rows:[{id:shopId,owner_subject:'owner-fixture'}]};
     if(sql.startsWith('SELECT id,name,price_cents'))return {rows:[{id:itemId,name:'Test Kota',price_cents:2500}]};
-    if(sql.startsWith('INSERT INTO kc_orders(')){inserted=params;return {rows:[{id:'44444444-4444-4444-8444-444444444444',order_number:'TEST-ORDER',status:'pending',total_cents:5500}]};}
+    if(sql.startsWith('INSERT INTO kc_orders(')){inserted=params;return {rows:[{id:'44444444-4444-4444-8444-444444444444',order_number:'TEST-ORDER',status:'pending',total_cents:6500}]};}
     return {rows:[],rowCount:1};
   }};
   const body={...valid(),totalCents:1,items:[{itemId,quantity:2,priceCents:1}]};
   const response=await neonApi(request(body),{},(_env,callback)=>callback(db));
   assert.equal(response.status,201);
   assert.equal(inserted[8],5000);
-  assert.equal(inserted[9],500);
-  assert.equal(inserted[10],5500);
+  assert.equal(inserted[9],1500);
+  assert.equal(inserted[10],6500);
   assert.equal(inserted[6],'Test Street');
   assert.equal(inserted[11],true,'development orders must remain test orders');
   assert.equal(calls[0],'BEGIN');
