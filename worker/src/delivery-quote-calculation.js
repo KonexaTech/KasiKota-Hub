@@ -13,6 +13,8 @@ export function calculateDeliveryQuote({pickup,dropoff,routeDistanceM,items}) {
     weight+=item.weightGrams*item.quantity;
     if (!Number.isSafeInteger(weight)||weight>2147483647) throw new Error("INVALID_WEIGHT");
   }
+  if (routeDistanceM > 1000) throw new Error("BICYCLE_DISTANCE_EXCEEDED");
+  const fee = routeDistanceM < 300 ? 500 : routeDistanceM < 700 ? 1000 : 1500;
   return {pickup_lat:pickup.lat,pickup_lon:pickup.lon,dropoff_lat:dropoff.lat,dropoff_lon:dropoff.lon,
-    route_distance_m:routeDistanceM,weight_grams:weight,currency:"ZAR",fee_cents:1500,payout_cents:1000};
+    route_distance_m:routeDistanceM,weight_grams:weight,currency:"ZAR",fee_cents:fee,payout_cents:fee*7/10};
 }
