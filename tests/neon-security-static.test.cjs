@@ -43,10 +43,10 @@ test("Owner access requires an approved shop and administrator accounts cannot u
  assert.match(api,/SELECT 1 FROM kc_shops WHERE owner_subject=\$1 AND approved=true LIMIT 1/);
  assert.match(api,/Administrator accounts cannot use shop-owner functions/);
 });
-test("Order prices come from the current Neon menu rows and delivery is R5",()=>{
+test("Order prices come from the current Neon menu rows and delivery is R15",()=>{
  assert.match(api,/SELECT id,name,price_cents FROM kc_menu_items/);
  assert.match(api,/subtotal\+=prices\.get\(item\.itemId\)\.price_cents\*item\.quantity/);
- assert.match(api,/const delivery=data\.fulfillmentType==="delivery"\?500:0/);
+ assert.match(api,/const delivery=data\.fulfillmentType==="delivery"\?1500:0/);
 });
 test("Staging checkouts are flagged as test orders and duplicate retries are idempotent",()=>{
  assert.match(api,/test_order,client_request_id/);
