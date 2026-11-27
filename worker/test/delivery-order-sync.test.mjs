@@ -66,3 +66,14 @@ test('missing approved synchronization RPC cannot acknowledge an event or retain
   assert.equal((await f.db.query('SELECT status FROM kc_orders WHERE id=$1',[f.id])).rows[0].status,'ready_for_collection');
  }finally{await f.close();}
 });
+test('reviewed synchronization rollback restores the prior trigger without deleting orders or delivery records',async()=>{
+ const f=await fixture();try{
+  const before=(await f.db.query('SELECT count(*)::int n FROM kc_orders')).rows[0].n;
+  const rollback=await readFile(new URL('../../docs/release/driver-order-sync.rollback.sql',import.meta.url),'utf8');
+  await f.db.exec(rollback.replaceAll('public.',f.schema+'.'));
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM kc_orders')).rows[0].n,before);
+  assert.equal((await f.db.query('SELECT status FROM kc_orders WHERE id=$1',[f.id])).rows[0].status,'ready_for_collection');
+  assert.equal((await f.db.query("SELECT to_regprocedure($1) AS fn",[f.schema+'.kc_apply_staging_delivery_event(uuid,uuid,uuid)'])).rows[0].fn,null);
+  await assert.rejects(f.db.query("UPDATE kc_orders SET status='out_for_delivery' WHERE id=$1",[f.id]),e=>e.code==='P0001');
+ }finally{await f.close();}
+});

@@ -1,3 +1,4 @@
+import { rejectConnectionOverrides } from "./runtime-database.mjs";
 // Dedicated least-privilege database connection for server-to-server delivery only.
 // Never fall back to the main application DATABASE_URL.
 export function deliveryDatabaseConnectionString(env) {
@@ -15,5 +16,6 @@ export function deliveryDatabaseConnectionString(env) {
       url.username !== "kc_delivery_bridge" ||
       !url.password || url.hash)
     throw new Error("Dedicated delivery database target or role guard failed");
+  rejectConnectionOverrides(url);
   return raw;
 }

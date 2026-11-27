@@ -1,3 +1,4 @@
+import { rejectConnectionOverrides, verifyRuntimeIdentity } from "./runtime-database.mjs";
 import { recoverPendingDispatches } from "./delivery-dispatch.js";
 import { deliveryEvents } from "./delivery-events.js";
 import { deliveryDatabaseConnectionString } from "./deliveryDb.mjs";
@@ -33,9 +34,11 @@ async function withDb(env, callback) {
   const connectionString = env.HYPERDRIVE?.connectionString || env.DATABASE_URL;
   if (!connectionString) throw new Error("Database binding not configured");
   if (!env.EXPECTED_NEON_HOST) throw new Error("Expected development database host not configured");
-  let hostname;
-  try { hostname = new URL(connectionString).hostname.toLowerCase(); }
+  let hostname,connectionUrl;
+  try { connectionUrl = new URL(connectionString); hostname = connectionUrl.hostname.toLowerCase(); }
   catch { throw new Error("Invalid database connection URL"); }
+  rejectConnectionOverrides(connectionUrl);
+  if(!["postgres:","postgresql:"].includes(connectionUrl.protocol)||connectionUrl.pathname!=="/neondb"||connectionUrl.username!=="kc_staging_worker"||!connectionUrl.password||connectionUrl.hash)throw Error("Restricted ordering database target or role guard failed");
   const expectedHost = env.EXPECTED_NEON_HOST.toLowerCase();
   // Neon exposes a transaction-pooler hostname by adding "-pooler" to the
   // endpoint label. Accept only that exact paired hostname or the direct host.
@@ -43,7 +46,7 @@ async function withDb(env, callback) {
   if (hostname !== expectedHost && hostname !== pooledHost)
     throw new Error("Database target does not match development branch");
   const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
-  try { await client.connect(); return await callback(client); }
+  try { await client.connect(); await verifyRuntimeIdentity(client,"kc_staging_worker"); return await callback(client); }
   finally { await client.end().catch(() => {}); }
 }
 
@@ -52,7 +55,7 @@ async function withDb(env, callback) {
 async function withDeliveryDb(env, callback) {
   const connectionString = deliveryDatabaseConnectionString(env);
   const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
-  try { await client.connect(); return await callback(client); }
+  try { await client.connect(); await verifyRuntimeIdentity(client,"kc_delivery_bridge"); return await callback(client); }
   finally { await client.end().catch(() => {}); }
 }
 
