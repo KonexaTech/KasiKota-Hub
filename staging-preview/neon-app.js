@@ -1,3 +1,4 @@
+import {captureDeliveryLocation} from "./delivery-location.mjs";
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 import { parseMenuText, formatMenuText, planMenuChanges } from "./menu-text.mjs";
 const AUTH_URL=new URL("/auth",location.origin).href;
@@ -271,6 +272,17 @@ function showEditableShop(){
   $("editShopAddress").value=current?.address||"";
 }
 $("shop").addEventListener("change",showEditableShop);
+if($("saveShopDetails")){
+ const locationButton=document.createElement("button");
+ locationButton.type="button";locationButton.textContent="Save shop location";
+ $("saveShopDetails").after(locationButton);
+ locationButton.onclick=safe(async()=>{
+   const id=$("shop").value;if(!id)throw new Error("Select your shop first.");
+   locationButton.disabled=true;
+   try{const location=await captureDeliveryLocation();await api("/api/owner/shops/"+encodeURIComponent(id)+"/pickup-location","PATCH",location);out("Shop pickup location saved.");}
+   finally{locationButton.disabled=false;}
+ });
+}
 bind("saveShopDetails",async()=>{
   const id=required("shop","Shop");
   const body={name:required("editShopName","Shop name"),area:required("editShopArea","Shop area"),phone:required("editShopPhone","Shop phone"),address:$("editShopAddress").value.trim()};
