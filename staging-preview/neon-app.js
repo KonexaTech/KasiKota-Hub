@@ -216,7 +216,12 @@ checkoutGpsButton.onclick=safe(async()=>{
  finally{checkoutGpsButton.disabled=false;}
 });
 refreshCheckoutGps();
-$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value,deliveryLocation:$("fulfillment").value==="delivery"?checkoutGps:null});requestId=null;checkoutGps=null;checkoutGpsStatus.textContent="";cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;rememberTrackedOrder(data.order.id);await refreshCustomerTracking(false);out(data)})()};
+const codChoice=document.createElement("input");codChoice.type="checkbox";
+const codLabel=document.createElement("label");codLabel.append(codChoice,document.createTextNode(" I choose cash on delivery"));
+$("address").after(codLabel);
+function updateCodChoice(){codLabel.hidden=$("fulfillment").value!=="delivery";if(codLabel.hidden)codChoice.checked=false;}
+$("fulfillment").addEventListener("change",updateCodChoice);updateCodChoice();
+$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if($("fulfillment").value==="delivery"&&!codChoice.checked)throw Error("Select cash on delivery first.");if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value,paymentMethod:$("fulfillment").value==="delivery"&&codChoice.checked?"cash_on_delivery":null,deliveryLocation:$("fulfillment").value==="delivery"?checkoutGps:null});requestId=null;codChoice.checked=false;checkoutGps=null;checkoutGpsStatus.textContent="";cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;rememberTrackedOrder(data.order.id);await refreshCustomerTracking(false);out(data)})()};
 bind("myOrders",async()=>out(await api("/api/orders/mine")));
 let trackingInFlight=false,lastObservedStatus="";
 refreshCustomerTracking=async function(announce=false){
