@@ -378,7 +378,7 @@ const allowedOwnerTransitions={
 function nextOwnerStatuses(order){
   return (allowedOwnerTransitions[order.status]||[]).filter(value=>
     value!=="ready_for_collection"||["pickup","delivery"].includes(order.fulfillment_type)
-  ).filter(value=>value!=="out_for_delivery"||order.fulfillment_type==="delivery");
+  ).filter(value=>order.fulfillment_type!=="delivery"||!["out_for_delivery","completed"].includes(value));
 }
 function updateOwnerOrderSelection(){
   const id=$("orderId").value.trim();
