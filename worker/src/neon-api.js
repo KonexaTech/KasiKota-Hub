@@ -1,3 +1,5 @@
+import { cyclingRouteDistance } from "./cycling-route.js";
+import { calculateDeliveryQuote } from "./delivery-quote-calculation.js";
 import { dispatchDelivery, deliveryTracking, deliveryCapabilities } from "./delivery-dispatch.js";
 import { verifiedNeonSubject, isNeonAdmin } from "./neon-auth.js";
 import { isOwnerOnlyRoute } from "./role-policy.js";
@@ -181,14 +183,26 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
     data.items=data.items.map(item=>({itemId:item.itemId.toLowerCase(),quantity:item.quantity}));
     try {const result=await withDb(env,async db=>{await db.query("BEGIN");try{
       const existing=(await db.query("SELECT id,order_number,status,total_cents,shop_id,customer_name,customer_phone,area,delivery_address,fulfillment_type FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(existing){const lines=(await db.query("SELECT menu_item_id AS id,quantity FROM kc_order_items WHERE order_id=$1",[existing.id])).rows;const matches=existing.shop_id===data.shopId&&existing.customer_name===data.customerName.trim()&&existing.customer_phone===data.customerPhone.trim()&&existing.area===data.area.trim()&&existing.fulfillment_type===data.fulfillmentType&&(existing.delivery_address||"")===(data.deliveryAddress||"")&&lines.length===data.items.length&&data.items.every(x=>lines.some(y=>y.id===x.itemId&&y.quantity===x.quantity));if(!matches)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:existing,replayed:true}}
-      const shop=(await db.query("SELECT id,owner_subject FROM kc_shops WHERE id=$1 AND approved=true FOR SHARE",[data.shopId])).rows[0];if(!shop)throw Error("SHOP");
+      const shop=(await db.query(stagingGps?"SELECT id,owner_subject,pickup_lat,pickup_lon FROM kc_shops WHERE id=$1 AND approved=true FOR SHARE":"SELECT id,owner_subject FROM kc_shops WHERE id=$1 AND approved=true FOR SHARE",[data.shopId])).rows[0];if(!shop)throw Error("SHOP");
       const ids=data.items.map(x=>x.itemId);if(new Set(ids).size!==ids.length)throw Error("ITEMS");
       const rows=(await db.query(stagingGps?"SELECT id,name,price_cents,weight_grams FROM kc_menu_items WHERE shop_id=$1 AND available=true AND id=ANY($2::uuid[]) FOR SHARE":"SELECT id,name,price_cents FROM kc_menu_items WHERE shop_id=$1 AND available=true AND id=ANY($2::uuid[])",[data.shopId,ids])).rows;
       if(rows.length!==ids.length)throw Error("ITEMS");
       const prices=new Map(rows.map(x=>[x.id,x]));let subtotal=0;for(const item of data.items)subtotal+=prices.get(item.itemId).price_cents*item.quantity;
       if(!Number.isSafeInteger(subtotal)||subtotal>100000000)throw Error("ITEMS");
       if(destinationGps&&data.items.some(item=>!Number.isSafeInteger(prices.get(item.itemId)?.weight_grams)||prices.get(item.itemId).weight_grams<1))throw Error("MISSING_WEIGHT");
-      const delivery=data.fulfillmentType==="delivery"?1500:0;
+      let delivery=data.fulfillmentType==="delivery"?1500:0;
+      if(destinationGps){
+        if(shop.pickup_lat==null||shop.pickup_lon==null)throw Error("MISSING_PICKUP");
+        const maxDistance=Number(env.KOTA_MAX_CYCLING_DISTANCE_M),maxWeight=Number(env.KOTA_MAX_CYCLING_WEIGHT_G);
+        if(env.KOTA_STAGING_ROUTING_APPROVED!=="true"||!Number.isSafeInteger(maxDistance)||maxDistance<1||!Number.isSafeInteger(maxWeight)||maxWeight<1)throw Error("ROUTING_UNAVAILABLE");
+        const pickup={lat:Number(shop.pickup_lat),lon:Number(shop.pickup_lon)};
+        const items=data.items.map(item=>({weightGrams:prices.get(item.itemId).weight_grams,quantity:item.quantity}));
+        if(items.reduce((sum,item)=>sum+item.weightGrams*item.quantity,0)>maxWeight)throw Error("DELIVERY_LIMIT");
+        const routeDistanceM=await cyclingRouteDistance({pickup,dropoff:destinationGps,apiKey:env.KOTA_ROUTING_API_KEY});
+        const quote=calculateDeliveryQuote({pickup,dropoff:destinationGps,routeDistanceM,items});
+        if(quote.route_distance_m>maxDistance||quote.weight_grams>maxWeight)throw Error("DELIVERY_LIMIT");
+        delivery=quote.fee_cents;
+      }
       const testOrder=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev";
       const number="KC-"+crypto.randomUUID().slice(0,12).toUpperCase();
       const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,test_order,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,testOrder,data.requestId])).rows[0];
@@ -201,7 +215,7 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
       await db.query("COMMIT");return {order,replayed:false};
     }catch(e){await db.query("ROLLBACK");throw e}});
     return json(result,result.replayed?200:201);
-    } catch(error){if(error?.message==="REQUEST_REUSED")return json({error:"Request ID already used for another checkout"},409);if(error?.message==="SHOP")return json({error:"Shop is not approved or available"},409);if(error?.message==="MISSING_WEIGHT")return json({error:"Delivery unavailable until shop saves packaged item weights"},409);if(error?.message==="ITEMS")return json({error:"Menu items are unavailable or invalid"},400);throw error}
+    } catch(error){if(error?.message==="REQUEST_REUSED")return json({error:"Request ID already used for another checkout"},409);if(error?.message==="SHOP")return json({error:"Shop is not approved or available"},409);if(error?.message==="MISSING_PICKUP")return json({error:"Shop pickup location not configured"},409);if(error?.message==="ROUTING_UNAVAILABLE"||error?.message==="INVALID_LOCATION")return json({error:"Delivery routing unavailable"},503);if(error?.message==="DELIVERY_LIMIT")return json({error:"Order exceeds bicycle delivery limits"},409);if(error?.message==="MISSING_WEIGHT")return json({error:"Delivery unavailable until shop saves packaged item weights"},409);if(error?.message==="ITEMS")return json({error:"Menu items are unavailable or invalid"},400);throw error}
   }
   const statusRoute=/^\/api\/owner\/orders\/([0-9a-f-]{36})\/status$/.exec(path);
   if(method==="PATCH"&&statusRoute&&uuid.test(statusRoute[1])){
