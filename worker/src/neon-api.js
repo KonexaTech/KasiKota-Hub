@@ -164,7 +164,7 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
       if(rows.length!==ids.length)throw Error("ITEMS");
       const prices=new Map(rows.map(x=>[x.id,x]));let subtotal=0;for(const item of data.items)subtotal+=prices.get(item.itemId).price_cents*item.quantity;
       if(!Number.isSafeInteger(subtotal)||subtotal>100000000)throw Error("ITEMS");
-      const delivery=data.fulfillmentType==="delivery"?500:0;
+      const delivery=data.fulfillmentType==="delivery"?1500:0;
       const testOrder=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev";
       const number="KC-"+crypto.randomUUID().slice(0,12).toUpperCase();
       const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,test_order,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,testOrder,data.requestId])).rows[0];
