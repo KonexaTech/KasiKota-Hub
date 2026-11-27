@@ -54,6 +54,18 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});
   if(method==="GET"&&path==="/api/owner/shops")return json({shops:await withDb(env,async db=>(await db.query("SELECT id,name,area,address,phone,approved FROM kc_shops WHERE owner_subject=$1 ORDER BY created_at DESC LIMIT 50",[subject])).rows)});
+  const pickupLocation=/^\/api\/owner\/shops\/([0-9a-f-]{36})\/pickup-location$/.exec(path);
+  if(method==="PATCH"&&pickupLocation&&uuid.test(pickupLocation[1])){
+    if(url.hostname!=="kota-connect-api-dev.siboniisozulu.workers.dev")return json({error:"Staging only"},403);
+    const d=await readBody(request);
+    if(!d||!Number.isFinite(d.lat)||Math.abs(d.lat)>90||!Number.isFinite(d.lon)||Math.abs(d.lon)>180||
+       !Number.isFinite(d.accuracyM)||d.accuracyM<0||d.accuracyM>100||
+       !Number.isFinite(d.capturedAt)||Math.abs(Date.now()-d.capturedAt)>90000)return json({error:"Invalid or stale location"},400);
+    const changed=await withDb(env,async db=>db.query(
+      "UPDATE kc_shops SET pickup_lat=$3,pickup_lon=$4,pickup_location_saved_at=now() WHERE id=$1 AND owner_subject=$2 AND approved=true RETURNING id",
+      [pickupLocation[1],subject,d.lat,d.lon]));
+    return changed.rowCount?json({ok:true}):json({error:"Shop not found or not owned"},404);
+  }
   const shopEdit=/^\/api\/owner\/shops\/([0-9a-f-]{36})$/.exec(path);
   if(method==="PATCH"&&shopEdit&&uuid.test(shopEdit[1])){
     const d=await readBody(request);
