@@ -426,12 +426,15 @@ bind("updateStatus",async()=>{
   if(!nextOwnerStatuses(selected).includes(status))throw Error("Choose a valid next status after "+selected.status+".");
   $("updateStatus").disabled=true;
   try{
-    await api("/api/owner/orders/"+encodeURIComponent(id)+"/status","PATCH",{status,note:$("note").value});
+    const approveCashOnDelivery=status==="out_for_delivery"&&selected.fulfillment_type==="delivery";
+    if(approveCashOnDelivery&&!window.confirm("Approve cash on delivery and request a driver for this test order?"))return;
+    const saved=await api("/api/owner/orders/"+encodeURIComponent(id)+"/status","PATCH",{status,note:$("note").value,approveCashOnDelivery});
     // Confirm the saved status from Neon instead of displaying the dropdown as if it succeeded.
     const verified=await api("/api/orders/"+encodeURIComponent(id));
     if(verified.order?.status!==status)throw Error("The API did not confirm the status change. Refresh orders before retrying.");
     await loadOwnerOrders(false);
     await pollNotifications(true);
+    if(approveCashOnDelivery){out(saved.dispatchAccepted===true?"COD approved. Delivery request accepted; check tracking for driver assignment.":"Order status saved. Delivery dispatch not confirmed. Check tracking and retry dispatch.");return;}
     out("Status saved: "+verified.order.order_number+" — "+status.replaceAll("_"," ")+". Customer tracking will reflect this saved status.");
   }finally{
     updateOwnerOrderSelection();
