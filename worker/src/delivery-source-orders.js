@@ -24,9 +24,9 @@ const cents = n => Number.isSafeInteger(n) && n >= 0 && n <= 2147483647;
 const positive = n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
 const latitude = n => Number.isFinite(n) && Math.abs(n) <= 90;
 const longitude = n => Number.isFinite(n) && Math.abs(n) <= 180;
-function authorizedQuote(row, now) {
+function authorizedQuote(row, now, stagingReady) {
   if (!row || row.approved !== true || row.fulfillment_type !== "delivery" ||
-      !["out_for_delivery"].includes(row.status) ||
+      !(stagingReady?["ready_for_collection","out_for_delivery"]:["out_for_delivery"]).includes(row.status) ||
       row.dispatch_ready !== true || !cleanSubject(row.customer_subject) ||
       !cleanSubject(row.owner_subject) || !cleanSubject(row.approved_by) ||
       !Number.isFinite(Date.parse(row.approved_at)) || Date.parse(row.approved_at) > now ||
@@ -79,7 +79,7 @@ export async function eligibleDeliverySnapshot(env, withDb, orderId, now = Date.
       WHERE o.id=$1`, [orderId.toLowerCase()]
     )).rows[0]);
     if (!row) return json({ error: "delivery_quote_not_found" }, 404);
-    if (!authorizedQuote(row, now))
+    if (!authorizedQuote(row, now, env.KOTA_STAGING_ROUTING_APPROVED==="true"))
       return json({ error: "delivery_not_eligible" }, 409);
     return json({ delivery: {
       source_app: source, source_order_id: String(row.id).toLowerCase(),
