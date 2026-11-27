@@ -266,10 +266,23 @@ let menuLoadedShop="",menuSnapshot="";
 const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
 const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
 async function ownerMenu(shopId){const data=await api(menuUrl(shopId));if(!Array.isArray(data.items))throw Error("Unable to read shop menu");return data.items}
+const weightPanel=document.createElement("div");
+$("menuText").after(weightPanel);
+function renderMenuWeights(shopId,items){
+ weightPanel.replaceChildren();
+ for(const item of items.filter(x=>x.available)){
+  const row=document.createElement("div"),label=document.createElement("label"),input=document.createElement("input"),button=document.createElement("button");
+  label.textContent=item.name+" packaged weight (g) ";input.type="number";input.min="1";input.max="100000";input.step="1";input.value=item.weight_grams??"";
+  label.append(input);button.type="button";button.textContent="Save weight";
+  button.onclick=safe(async()=>{if($("shop").value!==shopId)throw Error("Reload the selected shop menu.");const weightGrams=Number(input.value);if(!Number.isInteger(weightGrams)||weightGrams<1||weightGrams>100000)throw Error("Enter a valid packaged weight in grams.");button.disabled=true;try{await api(menuUrl(shopId)+"/"+encodeURIComponent(item.id)+"/weight","PATCH",{weightGrams});out("Packaged weight saved.");}finally{button.disabled=false;}});
+  row.append(label,button);weightPanel.append(row);
+ }
+}
+$("shop").addEventListener("change",()=>weightPanel.replaceChildren());
 async function viewOwnerMenu(){
   const shopId=required("shop","Shop"),items=await ownerMenu(shopId);
   menuLoadedShop=shopId;menuSnapshot=menuFingerprint(items);
-  $("menuText").value=formatMenuText(items);
+  $("menuText").value=formatMenuText(items);renderMenuWeights(shopId,items);
   out("Loaded "+items.filter(item=>item.available).length+" available menu items. Edit the text and press Save menu and prices.");
 }
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
