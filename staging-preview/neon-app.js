@@ -377,7 +377,7 @@ const allowedOwnerTransitions={
 };
 function nextOwnerStatuses(order){
   return (allowedOwnerTransitions[order.status]||[]).filter(value=>
-    value!=="ready_for_collection"||order.fulfillment_type==="pickup"
+    value!=="ready_for_collection"||["pickup","delivery"].includes(order.fulfillment_type)
   ).filter(value=>value!=="out_for_delivery"||order.fulfillment_type==="delivery");
 }
 function updateOwnerOrderSelection(){
@@ -387,7 +387,7 @@ function updateOwnerOrderSelection(){
   dropdown.value=selected?.id||"";
   const allowed=selected?nextOwnerStatuses(selected):[];
   deliveryButton.hidden=!deliveryDispatchEnabled;
-  deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=="delivery"||selected?.status!=="out_for_delivery";
+  deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=="delivery"||!["ready_for_collection","out_for_delivery"].includes(selected?.status);
   const next=$("status");
   next.replaceChildren(...(allowed.length?allowed.map(status=>new Option(status.replaceAll("_"," "),status)):[new Option("Choose an order first","")]));
   next.disabled=!allowed.length;
@@ -426,7 +426,7 @@ bind("updateStatus",async()=>{
   if(!nextOwnerStatuses(selected).includes(status))throw Error("Choose a valid next status after "+selected.status+".");
   $("updateStatus").disabled=true;
   try{
-    const approveCashOnDelivery=status==="out_for_delivery"&&selected.fulfillment_type==="delivery";
+    const approveCashOnDelivery=status==="ready_for_collection"&&selected.fulfillment_type==="delivery";
     if(approveCashOnDelivery&&!window.confirm("Approve cash on delivery and request a driver for this test order?"))return;
     const saved=await api("/api/owner/orders/"+encodeURIComponent(id)+"/status","PATCH",{status,note:$("note").value,approveCashOnDelivery});
     // Confirm the saved status from Neon instead of displaying the dropdown as if it succeeded.
