@@ -89,7 +89,7 @@ function apiResponse(path,method,body){
  if(path==="/api/orders/"+uuids.order+"/items")return {items:[{name:"Classic Kota",quantity:1,price_cents:menu[0].price_cents}]};
  if(path==="/api/orders/"+uuids.order+"/history")return {events:[{status:order.status}]};
  if(path==="/api/orders"&&method==="POST"){
-  order={...order,status:"pending",fulfillment_type:body.fulfillmentType,customer_name:body.customerName,total_cents:menu[0].price_cents*body.items[0].quantity+(body.fulfillmentType==="delivery"?500:0)};
+  order={...order,status:"pending",fulfillment_type:body.fulfillmentType,customer_name:body.customerName,total_cents:menu[0].price_cents*body.items[0].quantity+(body.fulfillmentType==="delivery"?1500:0)};
   return {order};
  }
  if(path==="/api/admin/overview")return {shopCount:1,approvedShopCount:1,applications:[{status:"pending",count:applications.filter(x=>x.status==="pending").length}],shops:[shop],commissionPaused:true,estimatedCommissionCents:0,collectedCommissionCents:null,commissionCollectionStatus:"Commission paused"};
@@ -298,7 +298,7 @@ try{
  await customer.locator("#quantity").fill("1");
  await customer.locator("#fulfillment").selectOption("delivery");
  assert.equal(await customer.locator("#deliveryAddressPanel").isVisible(),true);
- assert.ok((await customer.locator("#orderTotal").textContent()).includes("R31.00"));
+ assert.ok((await customer.locator("#orderTotal").textContent()).includes("R41.00"));
  await customer.locator("#customerName").fill("Mock Customer");
  await customer.locator("#customerPhone").fill("0700000000");
  await customer.locator("#address").fill("Mock Street");
