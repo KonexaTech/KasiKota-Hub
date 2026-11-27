@@ -12,24 +12,41 @@ function stageCookie(raw) {
       /^\s*samesite=none$/i.test(part) ? " SameSite=Lax" : part)
     .join(";");
 }
+
 async function authProxy(request, url) {
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(request.method))
-    return new Response("Method not allowed", {status:405});
+    return new Response("Method not allowed", { status: 405 });
+
   const origin = request.headers.get("origin");
   if (origin && origin !== url.origin)
-    return new Response("Origin not allowed", {status:403});
+    return new Response("Origin not allowed", { status: 403 });
   if (MUTATING.has(request.method) && request.headers.get("sec-fetch-site") === "cross-site")
-    return new Response("Cross-site request denied", {status:403});
+    return new Response("Cross-site request denied", { status: 403 });
 
   const headers = new Headers();
-  for (const key of ["accept", "accept-language", "content-type", "cookie", "user-agent",
-                     "authorization", "x-neon-auth-session-verifier"]) {
+  for (const key of [
+    "accept",
+    "accept-language",
+    "content-type",
+    "cookie",
+    "user-agent",
+    "authorization",
+    "x-neon-auth-session-verifier"
+  ]) {
     const value = request.headers.get(key);
     if (key === "cookie") {
-      const filtered=(value||"").split(";").map(x=>x.trim()).filter(x=>x&&!/^cf_(authorization|appsession|access[^=]*)=/i.test(x)).join("; ");
-      if(filtered)headers.set(key,filtered);
-    } else if(value)headers.set(key,value);
+      // Cloudflare Access cookies must never be sent to Neon Auth.
+      const filtered = (value || "")
+        .split(";")
+        .map((part) => part.trim())
+        .filter((part) => part && !/^cf_(?:authorization|appsession|binding|session|access[^=]*)=/i.test(part))
+        .join("; ");
+      if (filtered) headers.set(key, filtered);
+    } else if (value) {
+      headers.set(key, value);
+    }
   }
+
   if (origin) headers.set("origin", origin);
   const target = new URL(AUTH_UPSTREAM + url.pathname.slice("/auth".length) + url.search);
   const response = await fetch(target, {
@@ -38,12 +55,14 @@ async function authProxy(request, url) {
     body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
     redirect: "manual"
   });
+
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("set-cookie");
   const cookies = response.headers.getSetCookie?.() ||
     (response.headers.get("set-cookie") ? [response.headers.get("set-cookie")] : []);
   for (const cookie of cookies) responseHeaders.append("set-cookie", stageCookie(cookie));
   responseHeaders.set("cache-control", "no-store");
+
   // Only rewrite auth-server self-redirects. Redirects to application URLs are preserved.
   const location = responseHeaders.get("location");
   if (location) {
@@ -55,31 +74,51 @@ async function authProxy(request, url) {
         redirected.search + redirected.hash);
     }
   }
-  return new Response(response.body, {status:response.status, headers:responseHeaders});
+
+  return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if(url.origin!=="https://kota-connect-neon-staging.pages.dev")return new Response("Wrong staging origin",{status:403});
+    if (url.origin !== "https://kota-connect-neon-staging.pages.dev")
+      return new Response("Wrong staging origin", { status: 403 });
+
     if (url.pathname === "/auth" || url.pathname.startsWith("/auth/"))
       return authProxy(request, url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    const origin = request.headers.get("Origin");
+
+    const origin = request.headers.get("origin");
     if (origin && origin !== url.origin)
-      return new Response("Origin not allowed", {status:403});
-    if(typeof env.QA_API?.fetch!=="function")return Response.json({error:"Private QA API binding unavailable"},{status:503,headers:{"cache-control":"no-store"}});
-    const headers=new Headers();
-    for(const key of ["accept","content-type","authorization"]){const value=request.headers.get(key);if(value)headers.set(key,value);}
-    const upstream=new URL(url.pathname+url.search,API_UPSTREAM);
-    const response=await env.QA_API.fetch(upstream.href,{
-      method:request.method,headers,
-      body:request.method==="GET"||request.method==="HEAD"?undefined:request.body,
-      redirect:"manual"
+      return new Response("Origin not allowed", { status: 403 });
+    if (MUTATING.has(request.method) && request.headers.get("sec-fetch-site") === "cross-site")
+      return new Response("Cross-site request denied", { status: 403 });
+
+    if (typeof env.QA_API?.fetch !== "function") {
+      return Response.json(
+        { error: "Private QA API binding unavailable" },
+        { status: 503, headers: { "cache-control": "no-store" } }
+      );
+    }
+
+    // Allowlist application headers; cookies and Cloudflare Access credentials never leave the gateway.
+    const headers = new Headers();
+    for (const key of ["accept", "content-type", "authorization"]) {
+      const value = request.headers.get(key);
+      if (value) headers.set(key, value);
+    }
+
+    const upstream = new URL(url.pathname + url.search, API_UPSTREAM);
+    const response = await env.QA_API.fetch(upstream.href, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      redirect: "manual"
     });
+
     const resultHeaders = new Headers(response.headers);
     resultHeaders.delete("set-cookie");
     resultHeaders.set("cache-control", "no-store");
-    return new Response(response.body, {status:response.status, headers:resultHeaders});
+    return new Response(response.body, { status: response.status, headers: resultHeaders });
   }
 };
