@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash,createHmac,randomUUID } from 'node:crypto';
-import { dispatchDelivery,deliveryTracking,deliveryCapabilities } from '../src/delivery-dispatch.js';
+import { dispatchDelivery,deliveryTracking,deliveryCapabilities,recoverPendingDispatches } from '../src/delivery-dispatch.js';
 import { guestRouteAllowed } from '../src/guest-auth.js';
 import { deliveryFixture,orderId,jobId } from './delivery-fixture.mjs';
 const secret='intake-secret-'.repeat(4),env={DELIVERY_DISPATCH_ENABLED:'true',DELIVERY_SOURCE_LOOKUP_ENABLED:'true',DELIVERY_LOOKUP_TOKEN:'lookup-'.repeat(8),DELIVERY_INTAKE_SECRET:secret,DELIVERY_CF_ACCESS_CLIENT_ID:'fake-client-id',DELIVERY_CF_ACCESS_CLIENT_SECRET:'fake-client-secret',DELIVERY_SERVICE_URL:'https://delivery.example',NEON_AUTH_URL:'https://auth.example',EXPECTED_NEON_HOST:'ep-lively-leaf-za5rtfhs.c-2.eu-west-2.aws.neon.tech'};
@@ -63,4 +63,13 @@ test('lost remote ACK and local notification failure retry one remote job and on
  assert.equal((await f.db.query('SELECT count(*)::int AS count FROM kc_delivery_dispatches')).rows[0].count,1);
  const n=(await f.db.query('SELECT recipient_subject,body FROM kc_notifications')).rows;assert.equal(n.length,2);assert(n.every(x=>x.body.includes('no courier assignment confirmed')));
  }finally{globalThis.fetch=originalFetch;await f.close();}
+});
+
+test('recovery remains disabled without both staging flags and complete dispatch config',async()=>{
+ const forbidden=()=>{throw Error('Unexpected database access')};
+ for(const config of [env,{...env,KOTA_STAGING_ROUTING_APPROVED:'true'},{...env,KOTA_STAGING_DISPATCH_RECOVERY_ENABLED:'true'},{KOTA_STAGING_ROUTING_APPROVED:'true',KOTA_STAGING_DISPATCH_RECOVERY_ENABLED:'true'}])assert.deepEqual(await recoverPendingDispatches(config,forbidden),{attempted:0,accepted:0});
+});
+test('recovery scans only approved staging COD orders without dispatch records, in bounded batches',async()=>{
+ let calls=0;const db=async(_env,fn)=>fn({query:async(sql)=>{calls++;for(const clause of ['o.test_order','s.approved','q.dispatch_ready','q.cash_on_delivery_approved','d.order_id IS NULL','LIMIT 3',"o.status='ready_for_collection'"])assert.ok(sql.includes(clause));return {rows:[]};}});
+ assert.deepEqual(await recoverPendingDispatches({...env,KOTA_STAGING_ROUTING_APPROVED:'true',KOTA_STAGING_DISPATCH_RECOVERY_ENABLED:'true'},db),{attempted:0,accepted:0});assert.equal(calls,1);
 });
