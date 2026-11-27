@@ -1,0 +1,11 @@
+import {execFileSync} from 'node:child_process';
+import {cp,mkdir,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(!/^[a-f0-9]{40}$/.test(sha)||execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim())throw Error('Clean exact source required');
+const output=resolve(process.argv[2]||'dist-kota-private-qa');
+if(output!==resolve('dist-kota-private-qa'))throw Error('Use isolated output directory');
+await mkdir(output,{recursive:false});
+await cp('staging-preview',output,{recursive:true});
+await writeFile(resolve(output,'qa-source.json'),JSON.stringify({sourceCommit:sha,liveAcceptance:'NOT_TESTED'})+'\\n'.replace('\\n','\n'));
+console.log('Prepared isolated Pages source '+sha);

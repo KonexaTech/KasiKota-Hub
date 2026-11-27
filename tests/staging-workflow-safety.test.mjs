@@ -31,3 +31,26 @@ test('live staging writes require manual per-run authorization, never a branch p
  assert.match(workflow,/KOTA_TEST_CONFIRM_WRITES: .*inputs\.confirm_test_writes/);
  assert.doesNotMatch(workflow,/vars\.KOTA_TEST_CONFIRM_WRITES/);
 });
+
+test('private deployment is separately gated, exact source only, no hosted order writes',()=>{
+ const workflow=read('.github/workflows/deploy-kota-private-staging.yml');
+ assert.match(workflow,/^  workflow_dispatch:/m);
+ assert.doesNotMatch(workflow,/^  (push|pull_request|schedule|workflow_run):/m);
+ assert.match(workflow,/approve_private_deployment:[\s\S]*?required: true[\s\S]*?default: false/);
+ assert.match(workflow,/github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/feature\/neon-only-cutover' && inputs\.approve_private_deployment == true/);
+ assert.match(workflow,/environment: neon-staging/);
+ assert.match(workflow,/test "\$EXPECTED_SOURCE" = "\$GITHUB_SHA"/);
+ assert.match(workflow,/test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
+ assert.match(workflow,/--project-name kota-connect-neon-staging --branch feature\/neon-only-cutover --commit-hash "\$GITHUB_SHA"/);
+ const before=workflow.indexOf('protected-deploy-preflight.mjs before');
+ const deploy=workflow.indexOf('wrangler deploy --keep-vars');
+ const pages=workflow.indexOf('wrangler pages deploy');
+ const after=workflow.indexOf('protected-deploy-preflight.mjs after');
+ assert(before>=0&&before<deploy&&deploy<pages&&pages<after);
+ assert.doesNotMatch(workflow,/verify-live-|release-gates\.integration|prepare-staging-role-fixtures|--no-verify/);
+ const config=JSON.parse(read('worker/wrangler.jsonc'));
+ assert.equal(config.name,'kota-connect-api-dev');
+ assert.equal(config.preview_urls,false);
+ const preflight=read('worker/scripts/protected-deploy-preflight.mjs');
+ for(const guard of ['kc_staging_worker','no_owner_membership','no_financial_writes','previews_enabled===false','QA_API','Anonymous Access denial','QA service identity not accepted','Deployed source markers do not match'])assert(preflight.includes(guard),guard);
+});

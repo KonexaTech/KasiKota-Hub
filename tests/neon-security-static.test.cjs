@@ -2,6 +2,7 @@ const test=require("node:test"),assert=require("node:assert/strict"),fs=require(
 const api=fs.readFileSync("worker/src/neon-api.js","utf8");
 const auth=fs.readFileSync("worker/src/neon-auth.js","utf8");
 const worker=fs.readFileSync("worker/src/index.js","utf8");
+const deliveryDb=fs.readFileSync("worker/src/deliveryDb.mjs","utf8");
 const customer=fs.readFileSync("staging-preview/neon-customer.html","utf8");
 const customerClient=fs.readFileSync("staging-preview/kota-customer.mjs","utf8");
 const owner=fs.readFileSync("staging-preview/neon-owner.html","utf8");
@@ -10,7 +11,11 @@ const registration=fs.readFileSync("staging-preview/kota-shop-registration.mjs",
 test("Worker routes only to the guarded Neon development database",()=>{
  assert.match(worker,/NEON_ONLY_MODE !== "true"/);
  assert.match(worker,/EXPECTED_NEON_HOST/);
- assert.match(worker,/await neonApi\(request, env, withDb\)/);
+ assert.match(worker,/pooler/);
+ assert.match(worker,/hostname !== pooledHost/);
+ assert.match(worker,/await neonApi\(request, env, withDb, withDeliveryDb\)/);
+ assert.match(worker,/deliveryDatabaseConnectionString/);
+ assert.match(deliveryDb,/KOTA_DELIVERY_DATABASE_URL/);
  assert.doesNotMatch(worker,/privilegedRoute|verifiedFirebaseUser|FIREBASE_PROJECT_ID|ADMIN_UID/);
 });
 test("Neon Auth verifies signed EdDSA JWTs with JWKS and issuer, without an unsupported audience requirement",()=>{

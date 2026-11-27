@@ -19,6 +19,10 @@ jobs:
         run: |
           node --check worker/src/index.js
           node --check worker/src/neon-api.js
+          node --check worker/src/delivery-source-orders.js
+          node --check worker/src/delivery-events.js
+          node --check worker/src/delivery-dispatch.js
+          node --check worker/src/deliveryDb.mjs
           node --check worker/src/neon-auth.js
           node --check worker/src/guest-auth.js
           node --input-type=module --check < staging-preview/neon-app.js
@@ -43,6 +47,7 @@ jobs:
           node --test tests/neon-session-jwt.test.cjs
           node --test tests/neon-security-static.test.cjs
           node --test tests/neon-auth-proxy.test.mjs
+          node --test --test-concurrency=1 worker/test/delivery-source-lookup.test.mjs worker/test/delivery-callbacks.test.mjs worker/test/delivery-dispatch.test.mjs worker/test/delivery-db-config.test.mjs
           node --test worker/test/guest-auth.test.mjs
           node --test worker/test/role-policy.test.mjs
           node --test worker/test/checkout-validation.test.mjs worker/test/checkout-case-regression.test.mjs worker/test/status-lifecycle.test.mjs worker/test/ordering-postgres.test.mjs worker/test/checkout-shop-lock.test.mjs worker/test/live-acceptance-guard.test.mjs worker/test/prepare-staging-role-fixtures.test.mjs

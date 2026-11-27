@@ -33,6 +33,8 @@ export async function prepareFreshStagingRoleFixtures(env,{fetchImpl=globalThis.
  }
  const health=(await request(API,'/api/health',{label:'Source health'})).data;
  if(health?.ok!==true||health.backend!=='neon'||health.sourceCommit!==c.commit)blocked('Deployed staging API does not match this workflow source commit.');
+ const pages=(await request(SITE,'/qa-source.json',{label:'Pages source marker'})).data;
+ if(pages?.sourceCommit!==c.commit)blocked('Deployed staging Pages source commit does not match this workflow.');
  async function login(email,password,label){
   const {response}=await request(SITE,'/auth/sign-in/email',{method:'POST',headers:{origin:SITE},body:{email,password},label:label+' sign-in'});
   const cookie=(response.headers.getSetCookie?.()||[]).map(value=>value.split(';')[0]).filter(Boolean).join('; ');

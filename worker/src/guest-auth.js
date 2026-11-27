@@ -1,7 +1,7 @@
 // Anonymous customer credentials are 256-bit, browser-generated random secrets.
 // Never accept a guest credential for owner or administrator API routes.
 const orderId="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const orderRead=new RegExp("^/api/orders/"+orderId+"(?:/(?:items|history))?$","i");
+const orderRead=new RegExp("^/api/orders/"+orderId+"(?:/(?:items|history|delivery))?$","i");
 const readNotification=new RegExp("^/api/notifications/"+orderId+"/read$","i");
 
 export function guestRouteAllowed(method,path){

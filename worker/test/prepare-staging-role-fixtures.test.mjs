@@ -20,6 +20,7 @@ function fixture(options={}){
   const reply=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json',...headers}});
   const isOwner=init.headers?.authorization==='Bearer fixture.owner.token';
   if(path==='/api/health')return reply({ok:true,backend:'neon',sourceCommit:options.stale?'b'.repeat(40):'a'.repeat(40)});
+  if(path==='/qa-source.json')return reply({sourceCommit:options.stalePages?'c'.repeat(40):'a'.repeat(40)});
   if(path==='/auth/sign-in/email')return reply({ok:true},200,{'set-cookie':'fixture_session='+(body.email.startsWith('owner@')?'owner':'admin')+'; HttpOnly; Secure'});
   if(path==='/auth/get-session')return reply({user:{id:init.headers.cookie.includes('=owner')?'fixture-owner':'fixture-admin',email:options.wrongEmail?'other@fixture.example':init.headers.cookie.includes('=owner')?'owner@fixture.example':'admin@fixture.example',emailVerified:!options.unverified}});
   if(path==='/auth/token')return reply({token:init.headers.cookie.includes('=owner')?'fixture.owner.token':'fixture.admin.token'});
@@ -91,3 +92,5 @@ test('Access transport refuses foreign origins and never follows redirects',asyn
  const response=await request(SITE+'/auth/get-session',{headers:{cookie:'test-session', 'CF-Access-Client-Id':'untrusted-override'},redirect:'follow'});
  assert.equal(response.status,302);assert.equal(calls.length,1);assert.equal(calls[0].init.redirect,'manual');assert.equal(calls[0].init.headers['cf-access-client-id'],'fixture-client-id');assert.equal(calls[0].init.headers['cf-access-client-secret'],'fixture-client-secret');assert.equal(calls[0].init.headers.cookie,'test-session');
 });
+
+test('a stale Pages candidate blocks all fixture writes and login',async()=>{const f=fixture({stalePages:true});await assert.rejects(prepareFreshStagingRoleFixtures(env(),{fetchImpl:f.fetchImpl}),/Pages source commit/);assert.equal(f.calls.length,2);assert.equal(f.businessWrites().length,0);});

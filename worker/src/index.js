@@ -1,3 +1,6 @@
+import { deliveryEvents } from "./delivery-events.js";
+import { deliveryDatabaseConnectionString } from "./deliveryDb.mjs";
+import { deliveryOrderLookup } from "./delivery-source-orders.js";
 import { neonApi } from "./neon-api.js";
 import { Client } from "pg";
 
@@ -32,8 +35,21 @@ async function withDb(env, callback) {
   let hostname;
   try { hostname = new URL(connectionString).hostname.toLowerCase(); }
   catch { throw new Error("Invalid database connection URL"); }
-  if (hostname !== env.EXPECTED_NEON_HOST.toLowerCase())
+  const expectedHost = env.EXPECTED_NEON_HOST.toLowerCase();
+  // Neon exposes a transaction-pooler hostname by adding "-pooler" to the
+  // endpoint label. Accept only that exact paired hostname or the direct host.
+  const pooledHost = expectedHost.replace(/^([^.]+)\./, "$1-pooler.");
+  if (hostname !== expectedHost && hostname !== pooledHost)
     throw new Error("Database target does not match development branch");
+  const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
+  try { await client.connect(); return await callback(client); }
+  finally { await client.end().catch(() => {}); }
+}
+
+// Separate, least-privilege connection used only by delivery lookup, dispatch and callbacks.
+// It never falls back to the main ordering DATABASE_URL.
+async function withDeliveryDb(env, callback) {
+  const connectionString = deliveryDatabaseConnectionString(env);
   const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
   try { await client.connect(); return await callback(client); }
   finally { await client.end().catch(() => {}); }
@@ -98,11 +114,16 @@ export default {
     }
     if (request.method === "GET" && path === "/health") return json({ status: "ok", service: "kota-connect-api", database: "not_checked" }, 200, headers);
 
+    // Private server-to-server delivery callbacks and trusted order lookup.
+    // Both endpoints remain default-OFF until reviewed staging schema and secrets exist.
+    if (path === "/internal/delivery/events") return deliveryEvents(request, env, withDeliveryDb);
+    if (path.startsWith("/internal/delivery/orders/")) return deliveryOrderLookup(request, env, withDeliveryDb);
+
     // Password recovery and staging pages have already been handled; preserve API-only routing for everything else.
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404, headers);
 
     try {
-      const response = await neonApi(request, env, withDb);
+      const response = await neonApi(request, env, withDb, withDeliveryDb);
       if (!response) return json({ error: "Not found" }, 404, headers);
       const result = new Response(response.body, response);
       Object.entries(headers).forEach(([key, value]) => result.headers.set(key, value));
