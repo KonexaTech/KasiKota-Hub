@@ -18,7 +18,8 @@
     "DELIVERY_SOURCE_LOOKUP_ENABLED": "true",
     "DELIVERY_CALLBACKS_ENABLED": "true",
     "DELIVERY_SERVICE_URL": "https://konexa-delivery-private-staging.pages.dev",
-    "KOTA_STAGING_DISPATCH_RECOVERY_ENABLED": "false"
+    "KOTA_STAGING_DISPATCH_RECOVERY_ENABLED": "false",
+    "KOTA_DELIVERY_ORDER_SYNC_ENABLED": "false"
   },
   "triggers": {
     "crons": [

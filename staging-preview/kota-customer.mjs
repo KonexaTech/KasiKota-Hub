@@ -1,7 +1,8 @@
+import {captureDeliveryLocation} from "./delivery-location.mjs";
 import { findShops, quoteCents, areas } from "./shop-discovery.mjs";
 const $=id=>document.getElementById(id);
 const SESSION_KEY="kota_connect_guest_checkout_v1",ORDER_KEY="kota_connect_last_tracked_order_id";
-let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false,menuLoadSequence=0;
+let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false,menuLoadSequence=0,deliveryLocation=null;
 const money=cents=>"R"+(Number(cents||0)/100).toFixed(2);
 function error(message){$("errorMessage").textContent=message;$("errorMessage").hidden=false;$("errorMessage").scrollIntoView({block:"nearest"});}
 function clearError(){$("errorMessage").hidden=true;$("errorMessage").textContent="";}
@@ -59,7 +60,7 @@ function showShops(){
 }
 async function chooseShop(entry){
   clearError();const sequence=++menuLoadSequence;
-  shop=entry;selectedItem=null;requestId=null;$("confirmStep").hidden=true;
+  shop=entry;selectedItem=null;requestId=null;deliveryLocation=null;locationStatus.textContent="";$("confirmStep").hidden=true;
   $("menuStep").hidden=false;$("selectedShop").textContent=entry.name+" · "+(entry.area||"Newcastle");
   $("menuItems").replaceChildren();const wait=document.createElement("p");wait.textContent="Loading prices…";$("menuItems").append(wait);
   jump("menuStep"); // Show the next step immediately; never wait for network before responding to a tap.
@@ -109,6 +110,17 @@ async function trackOrder(announce=true){
   }catch(e){$("trackingChecked").textContent="Tracking could not update: "+e.message;if(announce)throw e}
   finally{tracking=false}
 }
+const locationButton=document.createElement("button"),locationStatus=document.createElement("span");
+locationButton.type="button";locationButton.textContent="Use my current location";
+locationStatus.setAttribute("role","status");
+$("address").after(locationButton,locationStatus);
+locationButton.addEventListener("click",async()=>{
+  clearError();locationButton.disabled=true;deliveryLocation=null;
+  try{deliveryLocation=await captureDeliveryLocation();locationStatus.textContent="Delivery location captured.";}
+  catch(e){locationStatus.textContent="";error(e.message)}
+  finally{locationButton.disabled=false}
+});
+$("address").addEventListener("input",()=>{deliveryLocation=null;locationStatus.textContent=""});
 $("proceed").addEventListener("click",()=>jump("browse"));
 action("loadShops",loadShops);
 $("area").addEventListener("change",()=>{clearError();showShops()});
@@ -132,12 +144,16 @@ $("checkout").addEventListener("submit",async event=>{
       fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value.trim()};
     if(!body.customerName||!body.customerPhone)throw Error("Enter your name and cellphone number.");
     if(body.fulfillmentType==="delivery"&&!body.deliveryAddress)throw Error("Enter your delivery address.");
+    if(body.fulfillmentType==="delivery"){
+      if(!deliveryLocation)throw Error("Capture your delivery location before ordering.");
+      body.paymentMethod="cash_on_delivery";body.deliveryLocation=deliveryLocation;
+    }
     if(body.area==="All Newcastle areas")body.area=shop.area||"Newcastle";
     const data=await api("/orders",{method:"POST",body});
     const id=data?.order?.id;if(!id)throw Error("The server did not confirm an order ID.");
     $("orderId").value=id;try{localStorage.setItem(ORDER_KEY,id)}catch{}
     $("successMessage").textContent="Order "+data.order.order_number+" received. "+money(data.order.total_cents)+" is payable in cash when collecting or receiving your order. No online payment has been taken.";
-    requestId=null;$("confirmStep").hidden=true;
+    requestId=null;deliveryLocation=null;locationStatus.textContent="";$("confirmStep").hidden=true;
     await trackOrder(false);jump("trackStep");
   }catch(e){error(e.message)}
   finally{submit.disabled=false;submit.removeAttribute("aria-busy");submit.innerHTML=label}

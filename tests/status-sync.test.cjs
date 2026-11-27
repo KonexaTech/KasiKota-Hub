@@ -37,7 +37,9 @@ test("owner transitions match the backend and prevent unsupported delivery state
  assert.deepEqual(check("pending","pickup"),["accepted","rejected","delayed"]);
  assert.deepEqual(check("accepted","pickup"),["preparing","delayed","rejected"]);
  assert.deepEqual(check("preparing","pickup"),["ready_for_collection","delayed"]);
- assert.deepEqual(check("preparing","delivery"),["out_for_delivery","delayed"]);
+ assert.deepEqual(check("preparing","delivery"),["ready_for_collection","delayed"]);
+ assert.deepEqual(check("ready_for_collection","delivery"),[]);
+ assert.deepEqual(check("out_for_delivery","delivery"),[]);
  assert.deepEqual(check("ready_for_collection","pickup"),["completed"]);
  assert.deepEqual(check("completed","pickup"),[]);
  assert.deepEqual(check("delayed","delivery"),["accepted","rejected"]);
@@ -50,8 +52,10 @@ test("owner transitions match the backend and prevent unsupported delivery state
  for(const status of ["pending","accepted","preparing","delayed","ready_for_collection","out_for_delivery","completed","rejected"]){
    assert.deepEqual(Array.from(backend.policy[status]||[]).sort(),(persisted[status]||[]).sort(),"API must match persisted transition guard: "+status);
    for(const fulfillment of ["pickup","delivery"]){
-    const expected=(persisted[status]||[]).filter(value=>(value!=="ready_for_collection"||fulfillment==="pickup")&&(value!=="out_for_delivery"||fulfillment==="delivery")).sort();
-    assert.deepEqual(check(status,fulfillment).sort(),expected,"Owner UI must match database for "+status+"/"+fulfillment);
+    // The DB also admits authenticated driver callbacks. Owners can prepare a
+    // delivery, but only driver events may move or complete it.
+    const expected=(persisted[status]||[]).filter(value=>fulfillment==="delivery"?!["out_for_delivery","completed"].includes(value):value!=="out_for_delivery").sort();
+    assert.deepEqual(check(status,fulfillment).sort(),expected,"Owner UI must expose only its permitted subset for "+status+"/"+fulfillment);
    }
  }
 });

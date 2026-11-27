@@ -89,6 +89,7 @@ function apiResponse(path,method,body){
  if(path==="/api/orders/"+uuids.order+"/items")return {items:[{name:"Classic Kota",quantity:1,price_cents:menu[0].price_cents}]};
  if(path==="/api/orders/"+uuids.order+"/history")return {events:[{status:order.status}]};
  if(path==="/api/orders"&&method==="POST"){
+  if(body.fulfillmentType==="delivery"){assert.equal(body.paymentMethod,"cash_on_delivery");assert.equal(body.deliveryLocation?.lat,-26);assert.equal(body.deliveryLocation?.lon,28);}
   order={...order,status:"pending",fulfillment_type:body.fulfillmentType,customer_name:body.customerName,total_cents:menu[0].price_cents*body.items[0].quantity+(body.fulfillmentType==="delivery"?1500:0)};
   return {order};
  }
@@ -302,6 +303,13 @@ try{
  await customer.locator("#customerName").fill("Mock Customer");
  await customer.locator("#customerPhone").fill("0700000000");
  await customer.locator("#address").fill("Mock Street");
+ await customer.locator("#confirmOrder").click();
+ await customer.waitForFunction(()=>document.getElementById("errorMessage")?.textContent?.includes("Capture your delivery location"));
+ assert.equal(calls.filter(x=>x.startsWith("POST /api/orders")).length,0,"Missing GPS must not submit a delivery order");
+ await customer.context().grantPermissions(["geolocation"]);
+ await customer.context().setGeolocation({latitude:-26,longitude:28,accuracy:5});
+ await customer.getByRole("button",{name:"Use my current location",exact:true}).click();
+ await customer.getByRole("status").filter({hasText:"Delivery location captured."}).waitFor();
  await customer.locator("#confirmOrder").click();
  await customer.waitForFunction(()=>document.getElementById("successMessage")?.textContent?.includes("TEST-LOCAL-001"));
  await customer.locator("#track").click();

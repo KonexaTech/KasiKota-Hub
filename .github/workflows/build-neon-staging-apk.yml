@@ -4,12 +4,17 @@ on:
   push:
     branches:
       - feature/neon-only-cutover
+      - repair/integrated-beta-20261127
+permissions:
+  contents: read
 jobs:
   android-debug:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover'
+    if: github.ref == 'refs/heads/feature/neon-only-cutover' || github.ref == 'refs/heads/repair/integrated-beta-20261127'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -65,9 +70,22 @@ jobs:
           test -s android-staging/android/app/build/outputs/apk/debug/app-debug.apk
           test -s android-staging/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           test ! -e android-staging/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+      - name: Verify signing, supported Android version and artifact provenance
+        run: |
+          mkdir -p device-artifact
+          APK=android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > device-artifact/signature.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > device-artifact/package.txt
+          grep -q "package: name='za.co.kotaconnect.staging'" device-artifact/package.txt
+          grep -q "sdkVersion:'26'" device-artifact/package.txt
+          sha256sum "$APK" > device-artifact/sha256.txt
+          printf '%s\n' "$GITHUB_SHA" > device-artifact/source-commit.txt
+          cp "$APK" device-artifact/Kota-Connect-staging.apk
+          printf '%s\n' 'Private debug staging wrapper. Exact hosted API/Pages acceptance, Access login, physical installation, GPS, notifications and upgrade signing remain unverified. No real payments.' > device-artifact/READ-ME.txt
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
           name: kota-connect-neon-staging-debug-apk
-          path: android-staging/android/app/build/outputs/apk/debug/app-debug.apk
+          path: device-artifact/
           if-no-files-found: error
