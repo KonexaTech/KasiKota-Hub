@@ -38,6 +38,10 @@ export async function deliveryEvents(request,env,withDb){
    if(newer&&current&&((['delivered','cancelled','failed'].includes(current.status)&&data.status!==current.status)||(!['cancelled','failed'].includes(data.status)&&states.indexOf(data.status)<states.indexOf(current.status)))){await db.query('ROLLBACK');return json({error:'Delivery state conflict'},409);}
    await db.query('INSERT INTO '+prefix+'_delivery_events(event_id,order_id,job_id,sequence,status,occurred_at,payload_hash) VALUES($1,$2,$3,$4,$5,$6,$7)',[data.event_id,data.source_order_id,data.job_id,data.sequence,data.status,data.occurred_at,digest]);
    if(newer)await db.query('INSERT INTO '+prefix+'_delivery_state(order_id,job_id,sequence,status,occurred_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(order_id) DO UPDATE SET sequence=EXCLUDED.sequence,status=EXCLUDED.status,occurred_at=EXCLUDED.occurred_at',[data.source_order_id,data.job_id,data.sequence,data.status,data.occurred_at]);
+   if(newer&&env.KOTA_DELIVERY_ORDER_SYNC_ENABLED==='true'&&['collected','enroute','delivered'].includes(data.status)){
+    const applied=(await db.query('SELECT kc_apply_staging_delivery_event($1,$2,$3) AS applied',[data.source_order_id,data.job_id,data.event_id])).rows[0]?.applied;
+    if(applied!==true)throw Error('Driver order synchronization was not confirmed');
+   }
    if(newer&&(current?current.status!==data.status:(!dispatched||dispatched.intake_status!==data.status))){
     const message=data.status==='searching'?'Delivery queued: no courier assignment confirmed.':'Delivery status: '+data.status;
     for(const recipient of new Set([order.customer_subject,order.owner_subject].filter(Boolean)))await db.query("INSERT INTO kc_notifications(recipient_subject,order_id,kind,title,body) VALUES($1,$2,'order_status','Delivery update',$3)",[recipient,data.source_order_id,message]);

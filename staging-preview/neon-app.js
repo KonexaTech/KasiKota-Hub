@@ -1,3 +1,4 @@
+import {captureDeliveryLocation} from "./delivery-location.mjs";
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 import { parseMenuText, formatMenuText, planMenuChanges } from "./menu-text.mjs";
 const AUTH_URL=new URL("/auth",location.origin).href;
@@ -195,7 +196,32 @@ bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);op
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
 bind("addCart",async()=>{const item=menu.find(x=>x.id===$("item").value),quantity=Number($("quantity").value);if(!item||!Number.isInteger(quantity)||quantity<1||quantity>50)throw Error("Select a menu item and quantity");const current=cart.find(x=>x.itemId===item.id);if(current){if(current.quantity+quantity>50)throw Error("Maximum 50 per item");current.quantity+=quantity}else cart.push({itemId:item.id,quantity});requestId=null;$("cart").textContent=cart.map(x=>{const m=menu.find(i=>i.id===x.itemId);return m.name+" × "+x.quantity}).join(", ");out("Added to cart")});
 bind("clearCart",async()=>{cart=[];requestId=null;$("cart").textContent="Cart empty";out("Cart cleared")});
-$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});requestId=null;cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;rememberTrackedOrder(data.order.id);await refreshCustomerTracking(false);out(data)})()};
+let checkoutGps=null;
+const checkoutGpsButton=document.createElement("button");
+checkoutGpsButton.type="button";
+checkoutGpsButton.textContent="Use my current location";
+const checkoutGpsStatus=document.createElement("span");
+checkoutGpsStatus.setAttribute("role","status");
+$("address").after(checkoutGpsButton,checkoutGpsStatus);
+function refreshCheckoutGps(){
+ const delivery=$("fulfillment").value==="delivery";
+ checkoutGpsButton.hidden=!delivery;checkoutGpsStatus.hidden=!delivery;
+ if(!delivery){checkoutGps=null;checkoutGpsStatus.textContent="";}
+}
+$("fulfillment").addEventListener("change",refreshCheckoutGps);
+$("address").addEventListener("input",()=>{checkoutGps=null;checkoutGpsStatus.textContent="";});
+checkoutGpsButton.onclick=safe(async()=>{
+ checkoutGps=null;checkoutGpsButton.disabled=true;
+ try{checkoutGps=await captureDeliveryLocation();checkoutGpsStatus.textContent="Delivery location captured.";}
+ finally{checkoutGpsButton.disabled=false;}
+});
+refreshCheckoutGps();
+const codChoice=document.createElement("input");codChoice.type="checkbox";
+const codLabel=document.createElement("label");codLabel.append(codChoice,document.createTextNode(" I choose cash on delivery"));
+$("address").after(codLabel);
+function updateCodChoice(){codLabel.hidden=$("fulfillment").value!=="delivery";if(codLabel.hidden)codChoice.checked=false;}
+$("fulfillment").addEventListener("change",updateCodChoice);updateCodChoice();
+$("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if($("fulfillment").value==="delivery"&&!codChoice.checked)throw Error("Select cash on delivery first.");if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value,paymentMethod:$("fulfillment").value==="delivery"&&codChoice.checked?"cash_on_delivery":null,deliveryLocation:$("fulfillment").value==="delivery"?checkoutGps:null});requestId=null;codChoice.checked=false;checkoutGps=null;checkoutGpsStatus.textContent="";cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;rememberTrackedOrder(data.order.id);await refreshCustomerTracking(false);out(data)})()};
 bind("myOrders",async()=>out(await api("/api/orders/mine")));
 let trackingInFlight=false,lastObservedStatus="";
 refreshCustomerTracking=async function(announce=false){
@@ -214,8 +240,12 @@ refreshCustomerTracking=async function(announce=false){
     if(order.fulfillment_type==="delivery"){
       try{
         const data=await api("/api/orders/"+encodeURIComponent(id)+"/delivery");
-        if(data.delivery?.status&&data.delivery.status!=="not_requested")$("trackingStatus").textContent+=" — Delivery: "+data.delivery.status.replaceAll("_"," ")+(data.delivery.queued?" (queued; no courier assigned)":"");
-      }catch{ /* A disabled delivery integration must not hide ordinary order tracking. */ }
+        if($("orderId").value.trim()!==id)return;
+        const labels={searching:"Finding a driver",assigned:"Driver assigned",ready:"Ready for collection",collected:"Collected by driver",enroute:"Out for delivery",delivered:"Delivered",cancelled:"Delivery cancelled",failed:"Delivery failed"};
+        const deliveryStatus=data.delivery?.status;
+        if(Object.hasOwn(labels,deliveryStatus))$("trackingStatus").textContent="Order "+order.order_number+" — "+labels[deliveryStatus];
+        else if(order.status==="ready_for_collection")$("trackingStatus").textContent="Order "+order.order_number+" — Ready; driver request not yet confirmed";
+      }catch{if($("orderId").value.trim()===id)$("trackingStatus").textContent+=" — Live driver status unavailable";}
     }
     rememberTrackedOrder(id);
     if(announce)out(response);
@@ -245,10 +275,23 @@ let menuLoadedShop="",menuSnapshot="";
 const menuUrl=shopId=>"/api/owner/shops/"+encodeURIComponent(shopId)+"/menu";
 const menuFingerprint=items=>JSON.stringify(items.map(item=>[item.id,item.name,item.price_cents,item.available]));
 async function ownerMenu(shopId){const data=await api(menuUrl(shopId));if(!Array.isArray(data.items))throw Error("Unable to read shop menu");return data.items}
+const weightPanel=document.createElement("div");
+$("menuText").after(weightPanel);
+function renderMenuWeights(shopId,items){
+ weightPanel.replaceChildren();
+ for(const item of items.filter(x=>x.available)){
+  const row=document.createElement("div"),label=document.createElement("label"),input=document.createElement("input"),button=document.createElement("button");
+  label.textContent=item.name+" packaged weight (g) ";input.type="number";input.min="1";input.max="100000";input.step="1";input.value=item.weight_grams??"";
+  label.append(input);button.type="button";button.textContent="Save weight";
+  button.onclick=safe(async()=>{if($("shop").value!==shopId)throw Error("Reload the selected shop menu.");const weightGrams=Number(input.value);if(!Number.isInteger(weightGrams)||weightGrams<1||weightGrams>100000)throw Error("Enter a valid packaged weight in grams.");button.disabled=true;try{await api(menuUrl(shopId)+"/"+encodeURIComponent(item.id)+"/weight","PATCH",{weightGrams});out("Packaged weight saved.");}finally{button.disabled=false;}});
+  row.append(label,button);weightPanel.append(row);
+ }
+}
+$("shop").addEventListener("change",()=>weightPanel.replaceChildren());
 async function viewOwnerMenu(){
   const shopId=required("shop","Shop"),items=await ownerMenu(shopId);
   menuLoadedShop=shopId;menuSnapshot=menuFingerprint(items);
-  $("menuText").value=formatMenuText(items);
+  $("menuText").value=formatMenuText(items);renderMenuWeights(shopId,items);
   out("Loaded "+items.filter(item=>item.available).length+" available menu items. Edit the text and press Save menu and prices.");
 }
 $("shop").addEventListener("change",()=>{menuLoadedShop="";menuSnapshot="";$("menuText").value="";});
@@ -271,6 +314,17 @@ function showEditableShop(){
   $("editShopAddress").value=current?.address||"";
 }
 $("shop").addEventListener("change",showEditableShop);
+if($("saveShopDetails")){
+ const locationButton=document.createElement("button");
+ locationButton.type="button";locationButton.textContent="Save shop location";
+ $("saveShopDetails").after(locationButton);
+ locationButton.onclick=safe(async()=>{
+   const id=$("shop").value;if(!id)throw new Error("Select your shop first.");
+   locationButton.disabled=true;
+   try{const location=await captureDeliveryLocation();await api("/api/owner/shops/"+encodeURIComponent(id)+"/pickup-location","PATCH",location);out("Shop pickup location saved.");}
+   finally{locationButton.disabled=false;}
+ });
+}
 bind("saveShopDetails",async()=>{
   const id=required("shop","Shop");
   const body={name:required("editShopName","Shop name"),area:required("editShopArea","Shop area"),phone:required("editShopPhone","Shop phone"),address:$("editShopAddress").value.trim()};
@@ -327,8 +381,8 @@ const allowedOwnerTransitions={
 };
 function nextOwnerStatuses(order){
   return (allowedOwnerTransitions[order.status]||[]).filter(value=>
-    value!=="ready_for_collection"||order.fulfillment_type==="pickup"
-  ).filter(value=>value!=="out_for_delivery"||order.fulfillment_type==="delivery");
+    value!=="ready_for_collection"||["pickup","delivery"].includes(order.fulfillment_type)
+  ).filter(value=>value!=="out_for_delivery"&&(order.fulfillment_type!=="delivery"||value!=="completed"));
 }
 function updateOwnerOrderSelection(){
   const id=$("orderId").value.trim();
@@ -337,7 +391,7 @@ function updateOwnerOrderSelection(){
   dropdown.value=selected?.id||"";
   const allowed=selected?nextOwnerStatuses(selected):[];
   deliveryButton.hidden=!deliveryDispatchEnabled;
-  deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=="delivery"||selected?.status!=="out_for_delivery";
+  deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=="delivery"||!["ready_for_collection","out_for_delivery"].includes(selected?.status);
   const next=$("status");
   next.replaceChildren(...(allowed.length?allowed.map(status=>new Option(status.replaceAll("_"," "),status)):[new Option("Choose an order first","")]));
   next.disabled=!allowed.length;
@@ -376,12 +430,15 @@ bind("updateStatus",async()=>{
   if(!nextOwnerStatuses(selected).includes(status))throw Error("Choose a valid next status after "+selected.status+".");
   $("updateStatus").disabled=true;
   try{
-    await api("/api/owner/orders/"+encodeURIComponent(id)+"/status","PATCH",{status,note:$("note").value});
+    const approveCashOnDelivery=status==="ready_for_collection"&&selected.fulfillment_type==="delivery";
+    if(approveCashOnDelivery&&!window.confirm("Approve cash on delivery and request a driver for this test order?"))return;
+    const saved=await api("/api/owner/orders/"+encodeURIComponent(id)+"/status","PATCH",{status,note:$("note").value,approveCashOnDelivery});
     // Confirm the saved status from Neon instead of displaying the dropdown as if it succeeded.
     const verified=await api("/api/orders/"+encodeURIComponent(id));
     if(verified.order?.status!==status)throw Error("The API did not confirm the status change. Refresh orders before retrying.");
     await loadOwnerOrders(false);
     await pollNotifications(true);
+    if(approveCashOnDelivery){out(saved.dispatchAccepted===true?"COD approved. Delivery request accepted; check tracking for driver assignment.":"Order status saved. Delivery dispatch not confirmed. Check tracking and retry dispatch.");return;}
     out("Status saved: "+verified.order.order_number+" — "+status.replaceAll("_"," ")+". Customer tracking will reflect this saved status.");
   }finally{
     updateOwnerOrderSelection();

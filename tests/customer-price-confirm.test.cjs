@@ -16,6 +16,6 @@ assert.ok(client.includes('headers.authorization="Guest "+token();'));
 assert.ok(client.includes("requestId,shopId:shop.id"));
 assert.ok(client.includes("localStorage.setItem(ORDER_KEY,id)"));
 assert.ok(discovery.includes('fulfillment==="delivery"?1500:0'));
-assert.ok(api.includes('const delivery=data.fulfillmentType==="delivery"?1500:0;'));
+assert.match(api, /(?:const|let) delivery=data\.fulfillmentType===\"delivery\"\?1500:0;/);
 assert.ok(api.includes("ON CONFLICT (customer_subject,client_request_id)"));
 console.log("PASS: no-account price-to-confirm ordering, R15 delivery and guest order tracking");

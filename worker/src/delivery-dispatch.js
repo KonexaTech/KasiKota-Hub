@@ -45,3 +45,10 @@ export async function dispatchDelivery(env,withDb,id,subject){
  }catch(error){await db.query('ROLLBACK');throw error;}});
  }catch{return json({error:'Delivery dispatch unavailable; retry safely'},503);}
 }
+
+// Bounded staging-only recovery; every attempt rechecks eligibility and owner binding.
+export async function recoverPendingDispatches(env,withDb){
+ if(env.KOTA_STAGING_ROUTING_APPROVED!=='true'||env.KOTA_STAGING_DISPATCH_RECOVERY_ENABLED!=='true'||!config(env))return {attempted:0,accepted:0};
+ const pending=await withDb(env,async db=>(await db.query("SELECT o.id,s.owner_subject FROM kc_orders o JOIN kc_shops s ON s.id=o.shop_id JOIN kc_delivery_quotes q ON q.order_id=o.id LEFT JOIN kc_delivery_dispatches d ON d.order_id=o.id WHERE o.test_order AND o.fulfillment_type='delivery' AND o.status='ready_for_collection' AND s.approved AND q.dispatch_ready AND q.cash_on_delivery_approved AND d.order_id IS NULL ORDER BY q.approved_at,o.id LIMIT 3")).rows);
+ let accepted=0;for(const row of pending){const response=await dispatchDelivery(env,withDb,row.id,row.owner_subject);if(response.ok)accepted++;}return {attempted:pending.length,accepted};
+}
