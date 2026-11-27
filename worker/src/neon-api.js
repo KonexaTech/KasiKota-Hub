@@ -190,6 +190,7 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
       const prices=new Map(rows.map(x=>[x.id,x]));let subtotal=0;for(const item of data.items)subtotal+=prices.get(item.itemId).price_cents*item.quantity;
       if(!Number.isSafeInteger(subtotal)||subtotal>100000000)throw Error("ITEMS");
       if(destinationGps&&data.items.some(item=>!Number.isSafeInteger(prices.get(item.itemId)?.weight_grams)||prices.get(item.itemId).weight_grams<1))throw Error("MISSING_WEIGHT");
+      let pendingQuote=null;
       let delivery=data.fulfillmentType==="delivery"?1500:0;
       if(destinationGps){
         if(shop.pickup_lat==null||shop.pickup_lon==null)throw Error("MISSING_PICKUP");
@@ -201,12 +202,13 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
         const routeDistanceM=await cyclingRouteDistance({pickup,dropoff:destinationGps,apiKey:env.KOTA_ROUTING_API_KEY});
         const quote=calculateDeliveryQuote({pickup,dropoff:destinationGps,routeDistanceM,items});
         if(quote.route_distance_m>maxDistance||quote.weight_grams>maxWeight)throw Error("DELIVERY_LIMIT");
-        delivery=quote.fee_cents;
+        delivery=quote.fee_cents;pendingQuote=quote;
       }
       const testOrder=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev";
       const number="KC-"+crypto.randomUUID().slice(0,12).toUpperCase();
       const order=(await db.query("INSERT INTO kc_orders(order_number,shop_id,customer_subject,customer_name,customer_phone,area,delivery_address,fulfillment_type,subtotal_cents,delivery_cents,total_cents,test_order,client_request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (customer_subject,client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING RETURNING id,order_number,status,total_cents",[number,data.shopId,subject,data.customerName.trim(),data.customerPhone.trim(),data.area.trim(),data.deliveryAddress||null,data.fulfillmentType,subtotal,delivery,subtotal+delivery,testOrder,data.requestId])).rows[0];
       if(!order){const replay=(await db.query("SELECT id,order_number,status,total_cents,shop_id,customer_name,customer_phone,area,delivery_address,fulfillment_type FROM kc_orders WHERE customer_subject=$1 AND client_request_id=$2",[subject,data.requestId])).rows[0];if(!replay)throw Error("REQUEST_REUSED");const lines=(await db.query("SELECT menu_item_id AS id,quantity FROM kc_order_items WHERE order_id=$1",[replay.id])).rows;const matches=replay.shop_id===data.shopId&&replay.customer_name===data.customerName.trim()&&replay.customer_phone===data.customerPhone.trim()&&replay.area===data.area.trim()&&replay.fulfillment_type===data.fulfillmentType&&(replay.delivery_address||"")===(data.deliveryAddress||"")&&lines.length===data.items.length&&data.items.every(x=>lines.some(y=>y.id===x.itemId&&y.quantity===x.quantity));if(!matches)throw Error("REQUEST_REUSED");await db.query("COMMIT");return {order:replay,replayed:true}}
+      if(pendingQuote)await db.query("INSERT INTO kc_pending_delivery_quotes(order_id,pickup_lat,pickup_lon,dropoff_lat,dropoff_lon,route_distance_m,weight_grams,currency,fee_cents,payout_cents) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",[order.id,pendingQuote.pickup_lat,pendingQuote.pickup_lon,pendingQuote.dropoff_lat,pendingQuote.dropoff_lon,pendingQuote.route_distance_m,pendingQuote.weight_grams,pendingQuote.currency,pendingQuote.fee_cents,pendingQuote.payout_cents]);
       if(destinationGps)await db.query("UPDATE kc_orders SET dropoff_lat=$1,dropoff_lon=$2,dropoff_location_saved_at=to_timestamp($3::double precision/1000) WHERE id=$4 AND customer_subject=$5",[destinationGps.lat,destinationGps.lon,destinationGps.capturedAt,order.id,subject]);
       for(const item of data.items){const p=prices.get(item.itemId);await db.query(destinationGps?"INSERT INTO kc_order_items(order_id,menu_item_id,item_name,unit_price_cents,quantity,unit_weight_grams) VALUES($1,$2,$3,$4,$5,$6)":"INSERT INTO kc_order_items(order_id,menu_item_id,item_name,unit_price_cents,quantity) VALUES($1,$2,$3,$4,$5)",destinationGps?[order.id,p.id,p.name,p.price_cents,item.quantity,p.weight_grams]:[order.id,p.id,p.name,p.price_cents,item.quantity])}
       await db.query("INSERT INTO kc_order_status_events(order_id,previous_status,new_status,actor_subject,actor_role) VALUES($1,NULL,'pending',$2,'customer')",[order.id,subject]);
