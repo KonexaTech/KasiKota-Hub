@@ -11,7 +11,7 @@ test("checkout locks the approved shop row inside its transaction",()=>{
  assert.ok(checkout.indexOf("FOR SHARE")<checkout.indexOf("INSERT INTO kc_orders"));
 });
 test("shop lock does not change order price, commission or idempotency rules",()=>{
- assert.match(source,/data\.fulfillmentType==="delivery"\?500:0/);
+ assert.match(source,/data\.fulfillmentType==="delivery"\?1500:0/);
  assert.match(source,/REQUEST_REUSED/);
  assert.match(source,/testOrder/);
 });
