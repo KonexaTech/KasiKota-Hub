@@ -5,11 +5,12 @@ on:
     branches:
       - feature/neon-only-cutover
       - repair/integrated-beta-20261127
+      - repair/kota-android-location-20261127
 permissions:
   contents: read
 jobs:
   android-debug:
-    if: github.ref == 'refs/heads/feature/neon-only-cutover' || github.ref == 'refs/heads/repair/integrated-beta-20261127'
+    if: github.ref == 'refs/heads/feature/neon-only-cutover' || github.ref == 'refs/heads/repair/integrated-beta-20261127' || github.ref == 'refs/heads/repair/kota-android-location-20261127'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +36,8 @@ jobs:
           grep -q 'minSdkVersion = 26' variables.gradle
       - name: Apply Kota Connect branded Android launcher icon
         run: node android-staging/scripts/apply-launcher-icon.mjs
+      - name: Declare foreground location access for customer GPS capture
+        run: node android-staging/scripts/apply-location-permissions.mjs
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
@@ -79,6 +82,8 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$APK" > device-artifact/package.txt
           grep -q "package: name='za.co.kotaconnect.staging'" device-artifact/package.txt
           grep -q "sdkVersion:'26'" device-artifact/package.txt
+          grep -q "uses-permission: name='android.permission.ACCESS_COARSE_LOCATION'" device-artifact/package.txt
+          grep -q "uses-permission: name='android.permission.ACCESS_FINE_LOCATION'" device-artifact/package.txt
           sha256sum "$APK" > device-artifact/sha256.txt
           printf '%s\n' "$GITHUB_SHA" > device-artifact/source-commit.txt
           cp "$APK" device-artifact/Kota-Connect-staging.apk
