@@ -20,7 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feature/neon-only-cutover
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -42,6 +43,8 @@ jobs:
         run: npx cap add android
       - name: Build and sync Android web app
         run: npm run build:android
+      - name: Declare foreground location access
+        run: node android-staging/scripts/apply-location-permissions.mjs android/app/src/main/AndroidManifest.xml
       - name: Build debug APK
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - name: Upload APK

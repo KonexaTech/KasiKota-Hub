@@ -197,14 +197,15 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
       let delivery=data.fulfillmentType==="delivery"?1500:0;
       if(destinationGps){
         if(shop.pickup_lat==null||shop.pickup_lon==null)throw Error("MISSING_PICKUP");
-        const maxDistance=Number(env.KOTA_MAX_CYCLING_DISTANCE_M),maxWeight=Number(env.KOTA_MAX_CYCLING_WEIGHT_G);
-        if(env.KOTA_STAGING_ROUTING_APPROVED!=="true"||!Number.isSafeInteger(maxDistance)||maxDistance<1||!Number.isSafeInteger(maxWeight)||maxWeight<1)throw Error("ROUTING_UNAVAILABLE");
+        // Optional owner-approved checkout caps; dispatch still enforces each approved driver capacity.
+        const maxDistance=env.KOTA_MAX_CYCLING_DISTANCE_M==null?null:Number(env.KOTA_MAX_CYCLING_DISTANCE_M),maxWeight=env.KOTA_MAX_CYCLING_WEIGHT_G==null?null:Number(env.KOTA_MAX_CYCLING_WEIGHT_G);
+        if(env.KOTA_STAGING_ROUTING_APPROVED!=="true"||maxDistance!==null&&(!Number.isSafeInteger(maxDistance)||maxDistance<1)||maxWeight!==null&&(!Number.isSafeInteger(maxWeight)||maxWeight<1))throw Error("ROUTING_UNAVAILABLE");
         const pickup={lat:Number(shop.pickup_lat),lon:Number(shop.pickup_lon)};
         const items=data.items.map(item=>({weightGrams:prices.get(item.itemId).weight_grams,quantity:item.quantity}));
-        if(items.reduce((sum,item)=>sum+item.weightGrams*item.quantity,0)>maxWeight)throw Error("DELIVERY_LIMIT");
+        if(maxWeight!==null&&items.reduce((sum,item)=>sum+item.weightGrams*item.quantity,0)>maxWeight)throw Error("DELIVERY_LIMIT");
         const routeDistanceM=await cyclingRouteDistance({pickup,dropoff:destinationGps,apiKey:env.KOTA_ROUTING_API_KEY});
         const quote=calculateDeliveryQuote({pickup,dropoff:destinationGps,routeDistanceM,items});
-        if(quote.route_distance_m>maxDistance||quote.weight_grams>maxWeight)throw Error("DELIVERY_LIMIT");
+        if(maxDistance!==null&&quote.route_distance_m>maxDistance||maxWeight!==null&&quote.weight_grams>maxWeight)throw Error("DELIVERY_LIMIT");
         delivery=quote.fee_cents;pendingQuote=quote;
       }
       const testOrder=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev";
