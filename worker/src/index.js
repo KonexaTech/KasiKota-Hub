@@ -1,3 +1,4 @@
+import { recoverPendingDispatches } from "./delivery-dispatch.js";
 import { deliveryEvents } from "./delivery-events.js";
 import { deliveryDatabaseConnectionString } from "./deliveryDb.mjs";
 import { deliveryOrderLookup } from "./delivery-source-orders.js";
@@ -56,6 +57,10 @@ async function withDeliveryDb(env, callback) {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    if(env.KOTA_STAGING_DISPATCH_RECOVERY_ENABLED!=="true"||env.KOTA_STAGING_ROUTING_APPROVED!=="true")return;
+    ctx.waitUntil(recoverPendingDispatches(env,withDeliveryDb).catch(error=>console.error("Staging dispatch recovery failed",{type:error?.name||"UnknownError"})));
+  },
   async fetch(request, env) {
     const origin = request.headers.get("origin");
     const permittedOrigin = allowedOrigin(origin, env);
