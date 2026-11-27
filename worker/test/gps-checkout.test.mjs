@@ -35,11 +35,17 @@ test('restricted-role GPS checkout persists trusted R15/R10 snapshots, preserves
   assert.deepEqual(quote,{fee_cents:1500,payout_cents:1000,route_distance_m:544,weight_grams:1000});
   assert.equal((await send(payload)).status,200);assert.equal(routes,1);
   assert.equal((await send({...payload,deliveryLocation:{...payload.deliveryLocation,lat:-26.002}})).status,409);
+  delete env.KOTA_MAX_CYCLING_DISTANCE_M;delete env.KOTA_MAX_CYCLING_WEIGHT_G;
+  assert.equal((await send({...payload,requestId:randomUUID()})).status,201,'no invented global caps; approved per-driver capacities govern dispatch');
+  assert.equal(routes,2);
+  env.KOTA_MAX_CYCLING_WEIGHT_G='invalid';
+  assert.equal((await send({...payload,requestId:randomUUID()})).status,503,'explicitly misconfigured caps still fail closed');
+  delete env.KOTA_MAX_CYCLING_WEIGHT_G;
   const now=Date.now();t.mock.method(Date,'now',()=>now+120000);
   assert.equal((await send(payload)).status,200,'committed guest orders remain retryable after GPS ages');
   assert.equal((await send({...payload,requestId:randomUUID()})).status,400,'new orders still require fresh GPS');
   assert.equal((await f.db.query('SELECT count(*)::int n FROM kc_orders WHERE client_request_id=$1',[payload.requestId])).rows[0].n,1);
-  assert.equal(routes,1);
+  assert.equal(routes,2);
   await f.db.query('UPDATE kc_orders SET dropoff_lat=NULL,dropoff_lon=NULL,delivery_location_saved_at=NULL WHERE id=$1',[created.order.id]);
   assert.equal((await send({...payload,deliveryLocation:{...payload.deliveryLocation,lat:0,lon:0}})).status,409,'missing historical coordinates are not zero-valued coordinates');
   t.diagnostic('Actual handler/PostgreSQL fixture with restricted role; routing is synthetic, not a hosted provider or physical GPS result.');
