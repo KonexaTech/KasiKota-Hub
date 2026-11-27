@@ -80,7 +80,7 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
   }
   const ownMenu=/^\/api\/owner\/shops\/([0-9a-f-]{36})\/menu$/.exec(path);
   if(ownMenu&&uuid.test(ownMenu[1])){
-    if(method==="GET")return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents,m.available FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.id=$1 AND s.owner_subject=$2 ORDER BY m.name LIMIT 200",[ownMenu[1],subject])).rows)});
+    if(method==="GET")return json({items:await withDb(env,async db=>(await db.query("SELECT m.id,m.name,m.price_cents,m.available,m.weight_grams FROM kc_menu_items m JOIN kc_shops s ON s.id=m.shop_id WHERE s.id=$1 AND s.owner_subject=$2 ORDER BY m.name LIMIT 200",[ownMenu[1],subject])).rows)});
     if(method==="POST"){const d=await readBody(request);if(!d||typeof d.name!=="string"||!d.name.trim()||d.name.length>160||!Number.isInteger(d.priceCents)||d.priceCents<1||d.priceCents>10000000)return json({error:"Invalid menu item"},400);const result=await withDb(env,async db=>db.query("INSERT INTO kc_menu_items(shop_id,name,price_cents) SELECT id,$3,$4 FROM kc_shops WHERE id=$1 AND owner_subject=$2 AND approved=true RETURNING id,name,price_cents,available",[ownMenu[1],subject,d.name.trim(),d.priceCents]));return result.rowCount?json({item:result.rows[0]},201):json({error:"Shop not owned or approved"},403)}
   }
   const menuWeight=/^\/api\/owner\/shops\/([0-9a-f-]{36})\/menu\/([0-9a-f-]{36})\/weight$/.exec(path);
