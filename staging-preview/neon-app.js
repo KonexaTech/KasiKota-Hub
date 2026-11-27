@@ -196,6 +196,26 @@ bind("loadShops",async()=>{const data=await api("/api/shops","GET",null,true);op
 $("shop").onchange=safe(async()=>{const id=$("shop").value;if(!id)return;const data=await api("/api/shops/"+encodeURIComponent(id)+"/menu","GET",null,true);menu=data.items;option($("item"),menu,x=>x.name+" — R"+(x.price_cents/100).toFixed(2));cart=[];requestId=null;$("cart").textContent="Cart empty";out(data.items.length+" menu items")});
 bind("addCart",async()=>{const item=menu.find(x=>x.id===$("item").value),quantity=Number($("quantity").value);if(!item||!Number.isInteger(quantity)||quantity<1||quantity>50)throw Error("Select a menu item and quantity");const current=cart.find(x=>x.itemId===item.id);if(current){if(current.quantity+quantity>50)throw Error("Maximum 50 per item");current.quantity+=quantity}else cart.push({itemId:item.id,quantity});requestId=null;$("cart").textContent=cart.map(x=>{const m=menu.find(i=>i.id===x.itemId);return m.name+" × "+x.quantity}).join(", ");out("Added to cart")});
 bind("clearCart",async()=>{cart=[];requestId=null;$("cart").textContent="Cart empty";out("Cart cleared")});
+let checkoutGps=null;
+const checkoutGpsButton=document.createElement("button");
+checkoutGpsButton.type="button";
+checkoutGpsButton.textContent="Use my current location";
+const checkoutGpsStatus=document.createElement("span");
+checkoutGpsStatus.setAttribute("role","status");
+$("address").after(checkoutGpsButton,checkoutGpsStatus);
+function refreshCheckoutGps(){
+ const delivery=$("fulfillment").value==="delivery";
+ checkoutGpsButton.hidden=!delivery;checkoutGpsStatus.hidden=!delivery;
+ if(!delivery){checkoutGps=null;checkoutGpsStatus.textContent="";}
+}
+$("fulfillment").addEventListener("change",refreshCheckoutGps);
+$("address").addEventListener("input",()=>{checkoutGps=null;checkoutGpsStatus.textContent="";});
+checkoutGpsButton.onclick=safe(async()=>{
+ checkoutGps=null;checkoutGpsButton.disabled=true;
+ try{checkoutGps=await captureDeliveryLocation();checkoutGpsStatus.textContent="Delivery location captured.";}
+ finally{checkoutGpsButton.disabled=false;}
+});
+refreshCheckoutGps();
 $("checkout").onsubmit=e=>{e.preventDefault();safe(async()=>{if(!requestId)requestId=crypto.randomUUID();const data=await api("/api/orders","POST",{requestId,shopId:$("shop").value,items:cart.length?cart:[{itemId:$("item").value,quantity:Number($("quantity").value)}],customerName:$("customerName").value,customerPhone:$("customerPhone").value,area:$("area").value,fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value});requestId=null;cart=[];$("cart").textContent="Cart empty";$("orderId").value=data.order.id;rememberTrackedOrder(data.order.id);await refreshCustomerTracking(false);out(data)})()};
 bind("myOrders",async()=>out(await api("/api/orders/mine")));
 let trackingInFlight=false,lastObservedStatus="";
