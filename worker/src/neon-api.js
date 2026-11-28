@@ -8,11 +8,15 @@ const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
 const next={pending:["accepted","rejected","delayed"],accepted:["preparing","delayed","rejected"],preparing:["ready_for_collection","out_for_delivery","delayed"],delayed:["accepted","rejected"],ready_for_collection:["completed"],out_for_delivery:["completed"]};
+function privateDeliveryAvailable(env,url){
+  return env.NEON_ONLY_MODE==="true"&&url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev"&&env.KOTA_STAGING_ROUTING_APPROVED==="true"&&env.KOTA_DELIVERY_ORDER_SYNC_ENABLED==="true"&&env.KOTA_STAGING_DISPATCH_RECOVERY_ENABLED==="true"&&env.DELIVERY_CALLBACKS_ENABLED==="true"&&typeof env.KOTA_ROUTING_API_KEY==="string"&&Boolean(env.KOTA_ROUTING_API_KEY.trim())&&typeof env.DELIVERY_CALLBACK_SECRET==="string"&&new TextEncoder().encode(env.DELIVERY_CALLBACK_SECRET).length>=32&&deliveryCapabilities(env).dispatch_enabled;
+}
 async function readBody(request){try{return await request.json()}catch{return null}}
 export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(!path.startsWith("/api/"))return null;
   if(method==="GET"&&path==="/api/health"){try{const db=await withDb(env,async c=>(await c.query("SELECT 1 AS ok")).rows[0]);return json({ok:db?.ok===1,backend:"neon",authConfigured:Boolean(env.NEON_AUTH_URL||env.NEON_AUTH_BASE_URL),sourceCommit:typeof env.KOTA_SOURCE_COMMIT==="string"&&/^[0-9a-f]{40}$/.test(env.KOTA_SOURCE_COMMIT)?env.KOTA_SOURCE_COMMIT:null})}catch(e){const code=typeof e?.code==="string"&&/^[A-Z0-9_]{2,12}$/.test(e.code)?e.code:"UNKNOWN";return json({ok:false,backend:"neon",database:"unavailable",errorCode:code,errorType:typeof e?.name==="string"?e.name.slice(0,50):"Unknown",phase: /connect|socket|network|fetch|timeout|tls|ssl/i.test(String(e?.message||""))?"connection":"database",diagnostic: /Database target does not match development branch/i.test(String(e?.message||""))?"wrong_database_target":/Expected development database host not configured/i.test(String(e?.message||""))?"missing_target_guard":/Invalid database connection URL/i.test(String(e?.message||""))?"invalid_database_url":/Database binding not configured/i.test(String(e?.message||""))?"missing_binding":/password authentication failed/i.test(String(e?.message||""))?"authentication":/getaddrinfo|ENOTFOUND|dns/i.test(String(e?.message||""))?"dns":/certificate|tls|ssl/i.test(String(e?.message||""))?"tls":/timeout|ETIMEDOUT/i.test(String(e?.message||""))?"timeout":/connect|socket|network|fetch/i.test(String(e?.message||""))?"network":"unclassified"},503)}}
+  if(method==="GET"&&path==="/api/delivery-capabilities")return json({delivery_available:Boolean(privateDeliveryAvailable(env,url))});
   // Guest credentials can access customer order routes only.
 
   // Allow no-account customers only on explicitly listed customer routes.
@@ -172,6 +176,7 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
   if(method==="POST"&&path==="/api/orders"){
     const data=await readBody(request);
     if(!data||typeof data.requestId!=="string"||!uuid.test(data.requestId)||typeof data.shopId!=="string"||!uuid.test(data.shopId)||!Array.isArray(data.items)||!data.items.length||data.items.length>30||!["pickup","delivery"].includes(data.fulfillmentType)||typeof data.customerName!=="string"||data.customerName.trim().length<2||data.customerName.length>100||typeof data.customerPhone!=="string"||!data.customerPhone.trim()||data.customerPhone.length>30||typeof data.area!=="string"||!data.area.trim()||data.area.length>160||data.deliveryAddress!=null&&(typeof data.deliveryAddress!=="string"||data.deliveryAddress.length>300)||data.fulfillmentType==="delivery"&&(typeof data.deliveryAddress!=="string"||!data.deliveryAddress.trim()))return json({error:"Invalid checkout"},400);
+    if(env.NEON_ONLY_MODE==="true"&&url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev"&&data.fulfillmentType==="delivery"&&!privateDeliveryAvailable(env,url))return json({error:"Delivery is currently unavailable. Please choose collection."},503);
     const stagingGps=url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev"&&env.KOTA_STAGING_ROUTING_APPROVED==="true";
     const destinationGps=stagingGps&&data.fulfillmentType==="delivery"?data.deliveryLocation:null;
     if(stagingGps&&data.fulfillmentType==="delivery"&&data.paymentMethod!=="cash_on_delivery")return json({error:"Select cash on delivery for staging delivery orders"},400);

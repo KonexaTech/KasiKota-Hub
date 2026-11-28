@@ -41,6 +41,15 @@ function showAccountActions(signedIn){
   }
 }
 
+function clearAccountSecrets(){
+  for(const id of ["password","newPassword","verificationCode","emailVerificationCode"]){const input=$(id);if(input)input.value="";}
+}
+async function confirmedSignOut(){
+  clearAccountSecrets();showDashboardPanels(false);
+  const result=await auth.signOut();
+  if(result?.error)throw Error("Sign-out was not confirmed. Please retry signing out.");
+  await showIdentity();
+}
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}
 const safe=(fn)=>async()=>{try{await fn()}catch(e){out("Error: "+e.message)}};
@@ -100,6 +109,7 @@ $("signin").addEventListener("submit",e=>{
     const r=await auth.signIn.email({email:$("email").value,password:$("password").value});
     if(r.error)throw Error(r.error.message);
     if(!r.data)throw Error("Sign-in did not return an account");
+    clearAccountSecrets();
     await showIdentity();
     const current=await auth.getSession();
     if(current.data?.user?.emailVerified===false){
@@ -162,8 +172,7 @@ bind("completePasswordReset",async()=>{
   if(r?.error)throw Error(r.error.message);
   $("verificationCode").value="";
   $("newPassword").value="";
-  try{await auth.signOut()}catch{}
-  await showIdentity();
+  try{await confirmedSignOut()}catch{out("Password changed. Sign-out was not confirmed. Please retry signing out.");return;}
   out("Password changed successfully. Sign in with your new password.");
 });
 $("togglePasswordReset")?.addEventListener("click",()=>{
@@ -175,7 +184,7 @@ $("togglePasswordReset")?.addEventListener("click",()=>{
   if(expanded)$("forgotPassword").focus();
 });
 bind("signup",async()=>{const email=$("email").value;const r=await auth.signUp.email({email,password:$("password").value,name:email.split("@")[0]});if(r.error)throw Error(r.error.message);await showIdentity();out("Account created. Use the shop registration button on the customer page to submit a shop application.")});
-bind("signout",async()=>{await auth.signOut();await showIdentity();out("Signed out")});
+bind("signout",async()=>{await confirmedSignOut();out("Signed out")});
 function bind(id,fn){
   const el=$(id);if(!el)return;
   el.onclick=safe(async()=>{
