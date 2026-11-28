@@ -11,6 +11,16 @@ on:
         required: true
         default: false
         type: boolean
+      configure_delivery_source_access:
+        description: Initialize only missing private Delivery source Access bindings; existing bindings are never overwritten
+        required: false
+        default: false
+        type: boolean
+      expected_delivery_source:
+        description: Exact reviewed canonical private Delivery source SHA for optional source setup
+        required: false
+        default: 2c415551214d6ba9b4140305417d41fac14f8723
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -78,5 +88,17 @@ jobs:
           rm -f "$SECRET_FILE"
           worker/node_modules/.bin/wrangler pages deploy dist-kota-private-qa --project-name kota-connect-neon-staging --branch feature/neon-only-cutover --commit-hash "$GITHUB_SHA"
           node worker/scripts/protected-deploy-preflight.mjs after
+      - name: Initialize missing private Delivery source Access bindings only when approved
+        if: ${{ inputs.configure_delivery_source_access }}
+        env:
+          CONFIGURE_DELIVERY_SOURCE_ACCESS: 'true'
+          EXPECTED_DELIVERY_SOURCE: ${{ inputs.expected_delivery_source }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.KOTA_STAGING_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.KOTA_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+          KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
+          KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
+          KOTA_CF_ACCESS_SERVICE_TOKEN_ID: ${{ vars.KOTA_CF_ACCESS_SERVICE_TOKEN_ID }}
+          KOTA_STAGING_OWNER_EMAIL: ${{ secrets.KOTA_STAGING_OWNER_EMAIL }}
+        run: node worker/scripts/configure-delivery-source-access.mjs
       - name: Report limited acceptance
         run: echo "Private source deployment verified. Real test-order acceptance and physical Android testing are separate release gates."
