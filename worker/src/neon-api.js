@@ -58,6 +58,14 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
     if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
     return json({error:"Method not allowed"},405);
   }
+  if(method==="GET"&&path==="/api/admin/routing-health"){
+    if(!await isNeonAdmin(env,withDb,subject))return json({error:"Administrator required"},403);
+    if(env.NEON_ONLY_MODE!=="true"||url.origin!=="https://kota-connect-api-dev.siboniisozulu.workers.dev")return json({ok:false,error:"Cycling route verification unavailable"},503);
+    try{
+      const distance=await cyclingRouteDistance({pickup:{lat:-27.75,lon:29.93},dropoff:{lat:-27.76,lon:29.94},apiKey:env.KOTA_ROUTING_API_KEY});
+      return json({ok:true,provider:"heigit-cycling-regular",distance_m:distance});
+    }catch{return json({ok:false,error:"Cycling route verification unavailable"},503);}
+  }
   if(method==="GET"&&path==="/api/admin/delivery-health"){
     if(!await isNeonAdmin(env,withDb,subject))return json({error:"Administrator required"},403);
     return deliveryHealth(request,env);

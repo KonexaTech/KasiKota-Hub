@@ -86,6 +86,13 @@ const adminIdentity=expect(await call("/api/me","admin"),200,"verified admin ide
 if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subject===adminIdentity.subject)
  throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
 assertFixturePrincipals(fixtureConfig, ownerIdentity, adminIdentity);
+if(process.env.KOTA_TEST_VERIFY_ROUTING==="true"){
+ const route=expect(await call("/api/admin/routing-health","admin"),200,"actual cycling provider");
+ if(route.ok!==true||route.provider!=="heigit-cycling-regular"||!Number.isSafeInteger(route.distance_m)||route.distance_m<=0)throw Error("BLOCKED: actual cycling provider distance not verified.");
+ expect(await call("/api/admin/routing-health","owner"),403,"owner denied routing diagnostic");
+ expect(await call("/api/admin/routing-health"),401,"anonymous denied routing diagnostic");
+ console.log("PASS: REAL_PROVIDER_CYCLING_ROUTE fixed synthetic coordinates, distance_m="+route.distance_m+"; no customer coordinates, pricing changes or activation.");
+}
 if(process.env.KOTA_TEST_VERIFY_DELIVERY_HEALTH==="true"){
  if(!/^[a-f0-9]{40}$/.test(process.env.KOTA_TEST_EXPECTED_DELIVERY_SOURCE||""))throw Error("BLOCKED: reviewed Delivery source SHA required.");
  const checked=await call("/api/admin/delivery-health","admin");
