@@ -22,6 +22,11 @@ on:
         type: string
         required: false
         default: 2c415551214d6ba9b4140305417d41fac14f8723
+      verify_routing:
+        description: Perform one fixed-coordinate actual cycling-provider request using the server-only staging key
+        type: boolean
+        required: false
+        default: false
 jobs:
   live-owner-admin:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/neon-only-cutover' && inputs.confirm_test_writes == true
@@ -58,6 +63,7 @@ jobs:
         run: node worker/test/prepare-staging-role-fixtures.mjs
       - name: Run real signed-in owner and administrator acceptance
         env:
+          KOTA_TEST_VERIFY_ROUTING: ${{ inputs.verify_routing && 'true' || 'false' }}
           KOTA_TEST_VERIFY_DELIVERY_HEALTH: ${{ inputs.verify_delivery_health && 'true' || 'false' }}
           KOTA_TEST_EXPECTED_DELIVERY_SOURCE: ${{ inputs.expected_delivery_source }}
           KOTA_TEST_CONFIRM_WRITES: ${{ inputs.confirm_test_writes && 'true' || 'false' }}
