@@ -28,6 +28,7 @@ let notifications=[
  {id:uuids.notif2,kind:"order_status",title:"Order update",body:"preparing",read_at:null}
 ];
 let dispatchEnabled=false;
+let customerDeliveryAvailable=true;
 const calls=[];
 const authModule=[
   'export function createAuthClient(){',
@@ -37,7 +38,7 @@ const authModule=[
   '  getSession:async()=>({data:{user:state.signedIn?{email:state.email,emailVerified:true}:null},error:null}),',
   '  signIn:{email:async()=>{state.events.push("signIn");state.signedIn=true;return {data:{user:{email:state.email,emailVerified:true}},error:null}}},',
   '  signUp:{email:async()=>{state.events.push("signUp");return ok}},',
-  '  signOut:async()=>{state.events.push("signOut");state.signedIn=false;return ok},',
+  '  signOut:async()=>{state.events.push("signOut");if(state.failSignOut==="stale")return ok;if(state.failSignOut)return {error:{message:"fixture remote sign-out failure"}};state.signedIn=false;return ok},',
   '  forgetPassword:{emailOtp:async()=>{state.events.push("forgotPassword");return ok}},',
   '  emailOtp:{',
   '    sendVerificationOtp:async()=>{state.events.push("sendVerification");return ok},',
@@ -66,6 +67,7 @@ const browserErrors=[];
 const results=[];
 
 function apiResponse(path,method,body){
+ if(path==="/api/delivery-capabilities")return {delivery_available:customerDeliveryAvailable};
  if(path==="/api/me")return {admin:globalThis.__currentRole==="admin"};
  if(path==="/api/owner/access")return {approved:true};
  if(path==="/api/shops")return {shops:[shop]};
@@ -119,6 +121,10 @@ async function makePage(role){
  await page.addInitScript(()=>{window.confirm=()=>true;});
  await page.route("https://esm.sh/**",async route=>route.fulfill({status:200,contentType:"application/javascript",headers:{"access-control-allow-origin":"*"},body:authModule}));
  await page.route("**/auth/token",async route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({token:"abc.def.ghi"})}));
+ await page.route("**/auth/get-session",async route=>{
+  const signedIn=await page.evaluate(()=>globalThis.__kotaMockAuth?.signedIn===true);
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(signedIn?{user:{id:'fixture-session-user'}}:null)});
+ });
  await page.route("**/api/**",async route=>{
   const request=route.request(),url=new URL(request.url()),method=request.method();
   const body=request.postDataJSON?.()||{};
@@ -153,6 +159,7 @@ async function authActions(page,role){
  await page.locator("#password").fill("MockPassword123!");
  await page.locator("#signin button").click();
  await resultContains(page,role==="admin"?"Administrator access verified":"Your shop is approved");
+ assert.equal(await page.locator("#password").inputValue(),"","Successful authentication must not retain the password in the form");
  assert.equal(await page.locator("#togglePasswordReset").isVisible(),true);
  assert.equal(await page.locator("#passwordResetFields").isVisible(),false);
  await page.locator("#togglePasswordReset").click();
@@ -163,8 +170,20 @@ async function authActions(page,role){
  await page.locator("#newPassword").fill("AnotherMockPassword123!");
  await page.locator("#completePasswordReset").click();
  await resultContains(page,"Password changed successfully");
+ await page.locator("#password").fill("AnotherMockPassword123!");
  await page.locator("#signin button").click();
  await resultContains(page,role==="admin"?"Administrator access verified":"Your shop is approved");
+ await page.evaluate(()=>{
+  globalThis.__kotaMockAuth.failSignOut=true;
+  for(const id of ['password','newPassword','verificationCode','emailVerificationCode'])document.getElementById(id).value='fixture-sensitive-value';
+ });
+ await page.locator("#signout").click();await resultContains(page,"Sign-out was not confirmed");
+ assert.equal(await page.locator('[data-restricted-panel]:visible').count(),0);
+ for(const id of ['password','newPassword','verificationCode','emailVerificationCode'])assert.equal(await page.locator('#'+id).inputValue(),'');
+ await page.evaluate(()=>{globalThis.__kotaMockAuth.failSignOut='stale';document.getElementById('result').textContent='TEST logout retry pending';});
+ await page.locator("#signout").click();await resultContains(page,"Sign-out was not confirmed");
+ assert.equal(await page.locator('[data-restricted-panel]:visible').count(),0);
+ await page.evaluate(()=>{globalThis.__kotaMockAuth.failSignOut=false;});
  await page.locator("#signout").click();
  await resultContains(page,"Signed out");
  const events=await page.evaluate(()=>globalThis.__kotaMockAuth.events);
@@ -305,7 +324,7 @@ try{
  await customer.locator("#address").fill("Mock Street");
  await customer.locator("#confirmOrder").click();
  await customer.waitForFunction(()=>document.getElementById("errorMessage")?.textContent?.includes("Capture your delivery location"));
- assert.equal(calls.filter(x=>x.startsWith("POST /api/orders")).length,0,"Missing GPS must not submit a delivery order");
+ assert.equal(calls.filter(x=>x==="customer POST /api/orders").length,0,"Missing GPS must not submit a delivery order");
  await customer.context().grantPermissions(["geolocation"]);
  await customer.context().setGeolocation({latitude:-26,longitude:28,accuracy:5});
  await customer.getByRole("button",{name:"Use my current location",exact:true}).click();
@@ -336,6 +355,24 @@ try{
  assert.ok(events.includes("signUp")&&events.includes("sendVerification")&&events.includes("verifyEmail"));
  results.push("customer: navigation, shop discovery, menu/price, delivery quote, checkout, tracking and registration passed (mocked API)");
  await customer.close();
+
+ customerDeliveryAvailable=false;
+ const unavailable=await makePage("customer");
+ await unavailable.waitForFunction(()=>document.querySelector('#fulfillment option[value="delivery"]')?.disabled===true);
+ assert.equal(await unavailable.locator('#fulfillment option[value="pickup"]').isDisabled(),false);
+ await unavailable.locator("#proceed").click();await unavailable.locator("#shopResults button").click();await unavailable.locator("#menuItems button").click();
+ await unavailable.locator("#customerName").fill("TEST unavailable");await unavailable.locator("#customerPhone").fill("0000000000");
+ await unavailable.evaluate(()=>{const select=document.getElementById('fulfillment');select.value='delivery';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ await unavailable.locator("#address").fill("TEST ADDRESS");
+ const beforeUnavailable=calls.filter(x=>x==='customer POST /api/orders').length;
+ await unavailable.locator("#confirmOrder").click();
+ await unavailable.waitForFunction(()=>document.getElementById('errorMessage')?.textContent.includes('Delivery is currently unavailable'));
+ assert.equal(calls.filter(x=>x==='customer POST /api/orders').length,beforeUnavailable);
+ await unavailable.locator("#fulfillment").selectOption('pickup');await unavailable.locator("#confirmOrder").click();
+ await unavailable.waitForFunction(()=>document.getElementById('successMessage')?.textContent.includes('TEST-LOCAL-001'));
+ assert.equal(calls.filter(x=>x==='customer POST /api/orders').length,beforeUnavailable+1);
+ results.push("customer: unavailable delivery disabled, forced submission blocked and collection remains usable (mocked API)");
+ await unavailable.close();
 
  assert.equal(browserErrors.length,0,"Unexpected browser/API failures: "+browserErrors.join("; "));
  assert.ok(calls.some(x=>x.includes("PATCH /api/owner/orders/")),"Owner status update request not observed");

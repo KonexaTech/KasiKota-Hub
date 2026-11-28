@@ -2,7 +2,7 @@ import {captureDeliveryLocation} from "./delivery-location.mjs";
 import { findShops, quoteCents, areas } from "./shop-discovery.mjs";
 const $=id=>document.getElementById(id);
 const SESSION_KEY="kota_connect_guest_checkout_v1",ORDER_KEY="kota_connect_last_tracked_order_id";
-let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false,menuLoadSequence=0,deliveryLocation=null;
+let shops=[],shop=null,menu=[],selectedItem=null,requestId=null,tracking=false,menuLoadSequence=0,deliveryLocation=null,deliveryAvailable=false;
 const money=cents=>"R"+(Number(cents||0)/100).toFixed(2);
 function error(message){$("errorMessage").textContent=message;$("errorMessage").hidden=false;$("errorMessage").scrollIntoView({block:"nearest"});}
 function clearError(){$("errorMessage").hidden=true;$("errorMessage").textContent="";}
@@ -83,6 +83,19 @@ function chooseItem(item){
   $("chosenItem").textContent=shop.name+" — "+item.name+" ("+money(item.price_cents)+" each)";
   $("confirmStep").hidden=false;$("quantity").value="1";updateQuote();jump("confirmStep");
 }
+const deliveryOption=$("fulfillment").querySelector('option[value="delivery"]'),deliveryLabel=deliveryOption.textContent;
+const deliveryHint=document.createElement("p");deliveryHint.className="hint";deliveryHint.setAttribute("role","status");
+deliveryHint.textContent="Delivery is currently unavailable. You can collect at the shop.";$("fulfillment").after(deliveryHint);
+function setDeliveryAvailability(available){
+  deliveryAvailable=available===true;deliveryOption.disabled=!deliveryAvailable;deliveryOption.textContent=deliveryAvailable?deliveryLabel:"Delivery unavailable — collect at the shop";deliveryHint.hidden=deliveryAvailable;
+  if(!deliveryAvailable&&$("fulfillment").value==="delivery")$("fulfillment").value="pickup";
+  updateQuote();
+}
+async function loadDeliveryAvailability(){
+  try{const data=await api("/delivery-capabilities",{publicRoute:true});setDeliveryAvailability(data.delivery_available===true)}
+  catch{setDeliveryAvailability(false)}
+}
+setDeliveryAvailability(false);
 function updateQuote(){
   if(!selectedItem)return;
   try{$("orderTotal").textContent="Estimated total: "+money(quoteCents(selectedItem.price_cents,Number($("quantity").value),$("fulfillment").value))}
@@ -144,6 +157,7 @@ $("checkout").addEventListener("submit",async event=>{
       fulfillmentType:$("fulfillment").value,deliveryAddress:$("address").value.trim()};
     if(!body.customerName||!body.customerPhone)throw Error("Enter your name and cellphone number.");
     if(body.fulfillmentType==="delivery"&&!body.deliveryAddress)throw Error("Enter your delivery address.");
+    if(body.fulfillmentType==="delivery"&&!deliveryAvailable)throw Error("Delivery is currently unavailable. Please choose collection.");
     if(body.fulfillmentType==="delivery"){
       if(!deliveryLocation)throw Error("Capture your delivery location before ordering.");
       body.paymentMethod="cash_on_delivery";body.deliveryLocation=deliveryLocation;
@@ -163,5 +177,6 @@ try{const id=localStorage.getItem(ORDER_KEY);if(id)$("orderId").value=id;const a
 $("area").addEventListener("change",()=>{try{localStorage.setItem("kota_connect_area",$("area").value)}catch{}});
 setInterval(()=>{if(document.visibilityState==="visible")trackOrder(false).catch(()=>{})},10000);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")trackOrder(false).catch(()=>{})});
+loadDeliveryAvailability();
 loadShops().catch(e=>{error(e.message);$("shopCount").textContent="Could not load shops."});
 if($("orderId").value)trackOrder(false).catch(()=>{});
