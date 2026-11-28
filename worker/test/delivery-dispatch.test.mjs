@@ -18,7 +18,7 @@ test('dispatch remains OFF without all explicit server configuration and rejects
 test('real isolated SQL: authorized idempotent signed dispatch and guest-safe persistent tracking',async()=>{
  const f=await deliveryFixture(),originalFetch=globalThis.fetch;let requests=0;
  globalThis.fetch=async(url,options)=>{
- requests++;assert.equal(url,'https://delivery.example/v1/delivery/jobs');assert.equal(options.redirect,'error');assert.equal(options.headers['CF-Access-Client-Id'],env.DELIVERY_CF_ACCESS_CLIENT_ID);assert.equal(options.headers['CF-Access-Client-Secret'],env.DELIVERY_CF_ACCESS_CLIENT_SECRET);assert.deepEqual(JSON.parse(options.body),{version:1,source_order_id:orderId});
+ requests++;assert.equal(url,'https://delivery.example/v1/delivery/jobs');assert.equal(options.redirect,'manual');assert.equal(options.headers['CF-Access-Client-Id'],env.DELIVERY_CF_ACCESS_CLIENT_ID);assert.equal(options.headers['CF-Access-Client-Secret'],env.DELIVERY_CF_ACCESS_CLIENT_SECRET);assert.deepEqual(JSON.parse(options.body),{version:1,source_order_id:orderId});
  const h=options.headers;assert.equal(h['x-konexa-source'],'kota');
  const canonical=['konexa-delivery-v1','POST','/v1/delivery/jobs','kota',h['x-konexa-timestamp'],createHash('sha256').update(options.body).digest('hex')].join('\n');
  assert.equal(h['x-konexa-signature'],'v1='+createHmac('sha256',secret).update(canonical).digest('hex'));
@@ -42,6 +42,7 @@ test('failed or conflicting intake is retryable and cannot pin fake jobs',async(
  globalThis.fetch=async()=>Response.json({job_id:randomUUID(),status:'paid'});
  assert.equal((await dispatchDelivery(env,f.withDb,orderId,'owner')).status,502);
  globalThis.fetch=async()=>{throw Error('interrupted network');};assert.equal((await dispatchDelivery(env,f.withDb,orderId,'owner')).status,503);
+ globalThis.fetch=async()=>new Response(null,{status:302,headers:{location:'https://foreign.example'}});assert.equal((await dispatchDelivery(env,f.withDb,orderId,'owner')).status,503);
  globalThis.fetch=async()=>Response.json({error:'conflict'},{status:409});assert.equal((await dispatchDelivery(env,f.withDb,orderId,'owner')).status,409);
  assert.equal((await f.db.query('SELECT count(*)::int AS count FROM kc_delivery_dispatches')).rows[0].count,0);
  }finally{globalThis.fetch=originalFetch;await f.close();}

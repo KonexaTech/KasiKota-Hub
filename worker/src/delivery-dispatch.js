@@ -26,7 +26,7 @@ export async function dispatchDelivery(env,withDb,id,subject){
  const digest=hex(await crypto.subtle.digest('SHA-256',encode(body))),canonical=['konexa-delivery-v1','POST',path,source,timestamp,digest].join('\n');
  const key=await crypto.subtle.importKey('raw',encode(env.DELIVERY_INTAKE_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
  const signature='v1='+hex(await crypto.subtle.sign('HMAC',key,encode(canonical)));
- const response=await fetch(origin+path,{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'content-type':'application/json','x-konexa-source':source,'x-konexa-timestamp':timestamp,'x-konexa-signature':signature,'CF-Access-Client-Id':env.DELIVERY_CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':env.DELIVERY_CF_ACCESS_CLIENT_SECRET},body});
+ const response=await fetch(origin+path,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(8000),headers:{'content-type':'application/json','x-konexa-source':source,'x-konexa-timestamp':timestamp,'x-konexa-signature':signature,'CF-Access-Client-Id':env.DELIVERY_CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':env.DELIVERY_CF_ACCESS_CLIENT_SECRET},body});
  if(![200,201].includes(response.status))return json({error:response.status===409?'Delivery source conflict; review required':'Delivery service unavailable; retry safely'},response.status===409?409:503);
  const result=await response.json();if(typeof result?.job_id!=='string'||!uuid.test(result.job_id)||!states.includes(result.status))return json({error:'Invalid delivery acknowledgement; retry safely'},502);
  return await withDb(env,async db=>{await db.query('BEGIN');try{
