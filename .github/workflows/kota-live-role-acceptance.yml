@@ -62,3 +62,29 @@ jobs:
           KOTA_TEST_ADMIN_EMAIL: ${{ secrets.KOTA_TEST_ADMIN_EMAIL }}
           KOTA_TEST_ADMIN_PASSWORD: ${{ secrets.KOTA_TEST_ADMIN_PASSWORD }}
         run: node worker/test/release-gates.integration.mjs
+
+      - name: Install browser acceptance tools for fresh fixtures only
+        if: ${{ inputs.create_fresh_test_shop }}
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.65.1
+          npx --no-install playwright install --with-deps chromium
+      - name: Exercise actual protected browser screens and guest pickup journey
+        if: ${{ inputs.create_fresh_test_shop }}
+        env:
+          DEBUG: ''
+          PWDEBUG: '0'
+          KOTA_PREPARE_FRESH_TEST_SHOP: ${{ inputs.create_fresh_test_shop && 'true' || 'false' }}
+          KOTA_TEST_CONFIRM_WRITES: ${{ inputs.confirm_test_writes && 'true' || 'false' }}
+          KOTA_TEST_SHOP_ID: ${{ steps.fresh_fixture.outputs.shop_id }}
+          KOTA_TEST_MENU_ITEM_ID: ${{ steps.fresh_fixture.outputs.menu_item_id }}
+          KOTA_TEST_OWNER_SUBJECT: ${{ steps.fresh_fixture.outputs.owner_subject }}
+          KOTA_TEST_ADMIN_SUBJECT: ${{ steps.fresh_fixture.outputs.admin_subject }}
+          KOTA_TEST_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          KOTA_TEST_API_BASE: https://kota-connect-api-dev.siboniisozulu.workers.dev
+          KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
+          KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
+          KOTA_TEST_OWNER_EMAIL: ${{ secrets.KOTA_TEST_OWNER_EMAIL }}
+          KOTA_TEST_OWNER_PASSWORD: ${{ secrets.KOTA_TEST_OWNER_PASSWORD }}
+          KOTA_TEST_ADMIN_EMAIL: ${{ secrets.KOTA_TEST_ADMIN_EMAIL }}
+          KOTA_TEST_ADMIN_PASSWORD: ${{ secrets.KOTA_TEST_ADMIN_PASSWORD }}
+        run: node tests/protected-live-browser.mjs

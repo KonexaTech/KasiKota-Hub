@@ -1,3 +1,4 @@
+import {runInNewContext} from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -53,4 +54,20 @@ test('private deployment is separately gated, exact source only, no hosted order
  assert.equal(config.preview_urls,false);
  const preflight=read('worker/scripts/protected-deploy-preflight.mjs');
  for(const guard of ['kc_staging_worker','no_owner_membership','no_financial_writes','previews_enabled===false','QA_API','Anonymous Access denial','QA service identity not accepted','Deployed source markers do not match'])assert(preflight.includes(guard),guard);
+});
+
+test('private deployment writes only scoped credentials, excludes absent routing keys and keeps the secret file private',()=>{
+ const workflow=read('.github/workflows/deploy-kota-private-staging.yml');
+ assert.match(workflow,/KOTA_ROUTING_API_KEY: \$\{\{ secrets\.KOTA_ROUTING_API_KEY \}\}/);
+ const script=workflow.split('\n').map(line=>/^\s*node -e '(.+)'$/.exec(line)?.[1]).find(line=>line?.includes('writeFileSync(process.env.SECRET_FILE'));
+ assert(script,'The reviewed private secret-file writer must be present');
+ for(const routing of [undefined,'','   ','fixture-routing-key']){
+  const writes=[];
+  const env={SECRET_FILE:'/fixture/private-secrets.json',KOTA_STAGING_DATABASE_URL:'fixture-database-credential',UNRELATED_SECRET:'must-not-transfer'};
+  if(routing!==undefined)env.KOTA_ROUTING_API_KEY=routing;
+  runInNewContext(script,{process:{env},require:name=>{assert.equal(name,'node:fs');return {writeFileSync:(...args)=>writes.push(args)};},console:{log:()=>assert.fail('No secret-file logging'),error:()=>assert.fail('No secret-file logging')}});
+  assert.equal(writes.length,1);const [path,raw,options]=writes[0];
+  assert.equal(path,env.SECRET_FILE);assert.equal(options.mode,0o600);
+  assert.deepEqual(JSON.parse(raw),routing?.trim()?{DATABASE_URL:env.KOTA_STAGING_DATABASE_URL,KOTA_ROUTING_API_KEY:routing}:{DATABASE_URL:env.KOTA_STAGING_DATABASE_URL});
+ }
 });

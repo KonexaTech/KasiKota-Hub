@@ -38,6 +38,8 @@ jobs:
           node --test tests/staging-workflow-safety.test.mjs
           node --test tests/guest-staging-guard.test.mjs
           node --test tests/postmerge-integrity.test.mjs
+          node --check tests/protected-live-browser.mjs
+          node --test tests/protected-browser-policy.test.mjs
           node --test tests/android-location-permissions.test.mjs
           node --test tests/customer-journey.test.mjs
           node --test tests/customer-price-confirm.test.cjs
