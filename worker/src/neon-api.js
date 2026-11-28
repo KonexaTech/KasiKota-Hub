@@ -1,3 +1,4 @@
+import { adminShopManagement } from "./admin-shop-management.js";
 import { deliveryProof } from "./delivery-proof.js";
 import { deliveryHealth } from "./delivery-health.js";
 import { cyclingRouteDistance } from "./cycling-route.js";
@@ -38,6 +39,8 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
     if(!account||account.email_verified!==true)return json({error:"Email verification required. Verify your email before continuing."},403);
     if(account.banned&&account.ban_active)return json({error:"Account is suspended."},403);
   }
+  const shopManagement=await adminShopManagement(request,env,withDb,subject);
+  if(shopManagement)return shopManagement;
   // Admin accounts must never act as shop owners, even by calling the API directly.
   if(isOwnerOnlyRoute(path)&&await isNeonAdmin(env,withDb,subject))return json({error:"Administrator accounts cannot use shop-owner functions. Sign in using a separate owner account."},403);
   if(path.startsWith("/api/owner/")&&path!=="/api/owner/access"){

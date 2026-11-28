@@ -1,0 +1,11 @@
+# Current-candidate administrator management port
+
+Reuse only PR54 administrator module, audit migration and focused tests on the current candidate; do not merge its obsolete stacked checkout/delivery files. Current ghost-account, guest, encryption-independent ownership, Worker redirects, source proof, notification and pricing behavior is preserved. Existing screens receive gated suspension/restoration/history controls. Account changes clear pending decisions and late history/dashboard results are discarded.
+
+Actual read-only inspection of young-bird-19918639 / br-restless-dew-zagey7le / neondb found no kc_shop_admin_events table and no worker approval UPDATE permission. Table-level notification INSERT is false because existing grants are column-scoped; the proposal checks the exact required existing columns instead of broadening notification privileges.
+
+Reviewed candidate: shop-admin-current.PROPOSED.sql adds an append-only audit table, runtime-only SELECT/column-scoped INSERT RLS, and UPDATE(approved) only. Its guard refuses wrong DB/role, an existing audit target, approval grant drift or missing notification rights. No existing shop/user/order/notification record is updated or deleted by applying it. Application actions remain gated OFF until separate staging migration approval and actual role acceptance. The earlier order-sync approval does not authorize this migration.
+
+Rollback first disables KOTA_SHOP_ADMIN_ENABLED, then revokes only the new approval/audit grants. Audit history/trigger/table are retained; no destructive DROP. Existing recovery fork and current schema/grant evidence must be reviewed before approved execution. No production migration is authorized.
+
+Focused tests cover signed verified administrator boundary, stale/replayed/concurrent decisions, transaction rollback, immutable audit, existing notification kinds and SQL lifecycle; PostgreSQL CI also exercises independent checkout locking. Browser fixtures exercise the actual controls, not live Neon. Live suspension/restoration on an explicitly labelled allowlisted TEST shop remains BLOCKED until the separate migration is approved and applied. Older Kota39/41 and PR54 remain open; no automatic supersession claim.
