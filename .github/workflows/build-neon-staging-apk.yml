@@ -59,8 +59,23 @@ jobs:
               lines=[line for line in s.splitlines(keepends=True) if not ('com.google.gms:google-services' in line or 'apply plugin: \'com.google.gms.google-services\'' in line or 'id \'com.google.gms.google-services\'' in line)]
               p.write_text(''.join(lines))
           PY
+      - name: Configure owner-pinned staging signing when supplied
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover'
+        env:
+          ANDROID_STAGING_KEYSTORE_BASE64: ${{ secrets.ANDROID_STAGING_KEYSTORE_BASE64 }}
+          ANDROID_STAGING_STORE_PASSWORD: ${{ secrets.ANDROID_STAGING_STORE_PASSWORD }}
+          ANDROID_STAGING_KEY_ALIAS: ${{ secrets.ANDROID_STAGING_KEY_ALIAS }}
+          ANDROID_STAGING_KEY_PASSWORD: ${{ secrets.ANDROID_STAGING_KEY_PASSWORD }}
+          ANDROID_STAGING_CERT_SHA256: ${{ vars.ANDROID_STAGING_CERT_SHA256 }}
+        run: node scripts/android-staging-signing.mjs android-staging/android/app/build.gradle
       - name: Build debug APK with bounded dependency retries
         working-directory: android-staging/android
+        env:
+          ANDROID_STAGING_KEYSTORE_BASE64: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEYSTORE_BASE64 || '' }}
+          ANDROID_STAGING_STORE_PASSWORD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_STORE_PASSWORD || '' }}
+          ANDROID_STAGING_KEY_ALIAS: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEY_ALIAS || '' }}
+          ANDROID_STAGING_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEY_PASSWORD || '' }}
+          ANDROID_STAGING_CERT_SHA256: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && vars.ANDROID_STAGING_CERT_SHA256 || '' }}
         run: |
           chmod +x gradlew
           for attempt in 1 2 3; do
@@ -84,13 +99,17 @@ jobs:
           grep -q "sdkVersion:'26'" device-artifact/package.txt
           grep -q "uses-permission: name='android.permission.ACCESS_COARSE_LOCATION'" device-artifact/package.txt
           grep -q "uses-permission: name='android.permission.ACCESS_FINE_LOCATION'" device-artifact/package.txt
+          node scripts/android-staging-signing.mjs verify device-artifact/signature.txt device-artifact/signing-mode.json
           sha256sum "$APK" > device-artifact/sha256.txt
           printf '%s\n' "$GITHUB_SHA" > device-artifact/source-commit.txt
           cp "$APK" device-artifact/Kota-Connect-staging.apk
-          printf '%s\n' 'Private debug staging wrapper. Exact hosted API/Pages acceptance, Access login, physical installation, GPS, notifications and upgrade signing remain unverified. No real payments.' > device-artifact/READ-ME.txt
+          printf '%s\n' 'Private staging wrapper; inspect signing-mode.json. Exact hosted API/Pages acceptance, Access login, physical installation, GPS, notifications and upgrade signing remain unverified. No real payments.' > device-artifact/READ-ME.txt
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
           name: kota-connect-neon-staging-debug-apk
           path: device-artifact/
           if-no-files-found: error
+      - name: Remove only this job's temporary signing material
+        if: always() && env.KONEXA_STAGING_KEYSTORE_PATH != ''
+        run: rm -f -- "$KONEXA_STAGING_KEYSTORE_PATH"

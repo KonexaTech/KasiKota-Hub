@@ -45,8 +45,28 @@ jobs:
         run: npm run build:android
       - name: Declare foreground location access
         run: node android-staging/scripts/apply-location-permissions.mjs android/app/src/main/AndroidManifest.xml
+      - name: Configure owner-pinned staging signing when supplied
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover'
+        env:
+          ANDROID_STAGING_KEYSTORE_BASE64: ${{ secrets.ANDROID_STAGING_KEYSTORE_BASE64 }}
+          ANDROID_STAGING_STORE_PASSWORD: ${{ secrets.ANDROID_STAGING_STORE_PASSWORD }}
+          ANDROID_STAGING_KEY_ALIAS: ${{ secrets.ANDROID_STAGING_KEY_ALIAS }}
+          ANDROID_STAGING_KEY_PASSWORD: ${{ secrets.ANDROID_STAGING_KEY_PASSWORD }}
+          ANDROID_STAGING_CERT_SHA256: ${{ vars.ANDROID_STAGING_CERT_SHA256 }}
+        run: node scripts/android-staging-signing.mjs android/app/build.gradle
       - name: Build debug APK
+        env:
+          ANDROID_STAGING_KEYSTORE_BASE64: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEYSTORE_BASE64 || '' }}
+          ANDROID_STAGING_STORE_PASSWORD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_STORE_PASSWORD || '' }}
+          ANDROID_STAGING_KEY_ALIAS: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEY_ALIAS || '' }}
+          ANDROID_STAGING_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && secrets.ANDROID_STAGING_KEY_PASSWORD || '' }}
+          ANDROID_STAGING_CERT_SHA256: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/neon-only-cutover' && vars.ANDROID_STAGING_CERT_SHA256 || '' }}
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Verify pinned signer of generic staging APK
+        run: |
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk > "$RUNNER_TEMP/kota-signature.txt"
+          node scripts/android-staging-signing.mjs verify "$RUNNER_TEMP/kota-signature.txt" "$RUNNER_TEMP/kota-signing-mode.json"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -54,3 +74,6 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Remove only this job's temporary signing material
+        if: always() && env.KONEXA_STAGING_KEYSTORE_PATH != ''
+        run: rm -f -- "$KONEXA_STAGING_KEYSTORE_PATH"
