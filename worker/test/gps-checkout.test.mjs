@@ -21,7 +21,7 @@ test('restricted-role GPS checkout persists trusted R15/R10 snapshots, preserves
   await f.db.query("INSERT INTO kc_menu_items(id,shop_id,name,price_cents,weight_grams) VALUES($1,$2,'TEST GPS',1000,500)",[menu,shop]);
   let routes=0;
   t.mock.method(globalThis,'fetch',async(url,options)=>{
-   assert.equal(String(url),'https://api.openrouteservice.org/v2/directions/cycling-regular/json');
+   assert.equal(String(url),'https://api.heigit.org/openrouteservice/v2/directions/cycling-regular/json');
    assert.deepEqual(Object.keys(JSON.parse(options.body)),['coordinates']);routes++;
    return Response.json({routes:[{summary:{distance:543.2}}]});
   });

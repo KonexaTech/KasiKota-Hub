@@ -25,6 +25,7 @@ test('staging health uses only the existing pinned service identity, never user 
  for(const patch of [{NEON_ONLY_MODE:'false'},{DELIVERY_SERVICE_URL:'https://evil.example'},{DELIVERY_SERVICE_URL:target+'/other'},{DELIVERY_CF_ACCESS_CLIENT_SECRET:''}])assert.equal((await run({...env,...patch})).status,503);
  assert.equal((await run(env,'Bearer '+token,'https://production.example')).status,503);assert.equal(calls,1);
  for(const body of [{...ready,payments_enabled:true},{...ready,status_schema_ready:false},{...ready,sourceCommit:'invalid'},null]){upstream=()=>Response.json(body);assert.equal((await run()).status,503);}
+ upstream=()=>Response.json({stage:'database_probe',secret:'NEVER_RETURN'},{status:503});const diagnostic=await run();assert.deepEqual(await diagnostic.json(),{ok:false,error:'Delivery health unavailable',diagnostic:'upstream_http_503_database_probe'});
  upstream=()=>new Response(null,{status:302,headers:{location:'https://evil.example'}});assert.equal((await run()).status,503);
- upstream=()=>{throw Error('private-token-must-not-leak')};const failed=await run();assert.equal(failed.status,503);assert.deepEqual(await failed.json(),{ok:false,error:'Delivery health unavailable'});
+ upstream=()=>{throw Error('private-token-must-not-leak')};const failed=await run();assert.equal(failed.status,503);assert.deepEqual(await failed.json(),{ok:false,error:'Delivery health unavailable',diagnostic:'transport_or_invalid_response'});
 });
