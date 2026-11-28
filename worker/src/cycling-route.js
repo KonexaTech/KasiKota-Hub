@@ -5,7 +5,7 @@ export async function cyclingRouteDistance({pickup,dropoff,apiKey,fetcher=fetch}
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(),8000);
  try{
- const response=await fetcher("https://api.heigit.org/openrouteservice/v2/directions/cycling-regular/json",{method:"POST",headers:{Authorization:apiKey,"Content-Type":"application/json"},body:JSON.stringify({coordinates:[[pickup.lon,pickup.lat],[dropoff.lon,dropoff.lat]]}),signal:controller.signal,redirect:"error"});
+ const response=await fetcher("https://api.heigit.org/openrouteservice/v2/directions/cycling-regular/json",{method:"POST",headers:{Authorization:apiKey,"Content-Type":"application/json"},body:JSON.stringify({coordinates:[[pickup.lon,pickup.lat],[dropoff.lon,dropoff.lat]]}),signal:controller.signal,redirect:"manual"});
  if(!response.ok)throw Error("ROUTING_UNAVAILABLE");
  const data=await response.json();
  const distance=data?.routes?.[0]?.summary?.distance;

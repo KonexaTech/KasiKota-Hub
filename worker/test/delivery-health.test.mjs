@@ -12,7 +12,7 @@ test('staging health uses only the existing pinned service identity, never user 
  let admin=true,account=true,calls=0,upstream=()=>Response.json({...ready,secret:'fixture-never-return',users:['private']});
  t.mock.method(globalThis,'fetch',async(url,init)=>{
   if(String(url)===issuer+'/.well-known/jwks.json')return Response.json({keys:[jwk]});
-  calls++;assert.equal(String(url),target+'/v1/health');assert.equal(init.method,'GET');assert.equal(init.redirect,'error');assert(init.signal);
+  calls++;assert.equal(String(url),target+'/v1/health');assert.equal(init.method,'GET');assert.equal(init.redirect,'manual');assert(init.signal);
   assert.deepEqual(Object.keys(init.headers).sort(),['accept','cf-access-client-id','cf-access-client-secret']);
   assert.equal(init.headers['cf-access-client-id'],'fixture-client');assert.equal(init.headers['cf-access-client-secret'],'fixture-secret');return upstream();
  });

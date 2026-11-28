@@ -5,7 +5,7 @@ const unavailable=(diagnostic='configuration')=>Response.json({ok:false,error:'D
 export async function deliveryHealth(request,env,fetcher=globalThis.fetch){
  if(env.NEON_ONLY_MODE!=='true'||new URL(request.url).origin!==api||![service,service+'/'].includes(env.DELIVERY_SERVICE_URL)||![env.DELIVERY_CF_ACCESS_CLIENT_ID,env.DELIVERY_CF_ACCESS_CLIENT_SECRET].every(x=>typeof x==='string'&&x.length>0&&x.length<=1024&&!/[^\x21-\x7e]/.test(x)))return unavailable();
  try{
-  const response=await fetcher(service+'/v1/health',{method:'GET',redirect:'error',signal:AbortSignal.timeout(8000),headers:{accept:'application/json','cf-access-client-id':env.DELIVERY_CF_ACCESS_CLIENT_ID,'cf-access-client-secret':env.DELIVERY_CF_ACCESS_CLIENT_SECRET}});
+  const response=await fetcher(service+'/v1/health',{method:'GET',redirect:'manual',signal:AbortSignal.timeout(8000),headers:{accept:'application/json','cf-access-client-id':env.DELIVERY_CF_ACCESS_CLIENT_ID,'cf-access-client-secret':env.DELIVERY_CF_ACCESS_CLIENT_SECRET}});
   if(response.status!==200){
    let phase='';
    if(response.status===503){try{const d=await response.json();const allowed=['expected_neon_host_validation','hyperdrive_binding_validation','hyperdrive_connection_initialization','service_runtime_initialization','api_health_or_request','database_connection','database_probe','driver_audit_catalog','auth_schema_catalog','status_outbox_catalog','recovery_audit_catalog'];if(allowed.includes(d?.stage))phase='_'+d.stage;}catch{}}
