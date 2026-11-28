@@ -87,6 +87,7 @@ if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subjec
  throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
 assertFixturePrincipals(fixtureConfig, ownerIdentity, adminIdentity);
 if(process.env.KOTA_TEST_VERIFY_DELIVERY_HEALTH==="true"){
+ if(!/^[a-f0-9]{40}$/.test(process.env.KOTA_TEST_EXPECTED_DELIVERY_SOURCE||""))throw Error("BLOCKED: reviewed Delivery source SHA required.");
  const checked=await call("/api/admin/delivery-health","admin");
  if(checked.status!==200){const code=checked.data?.diagnostic;console.log("FAIL: LIVE Delivery health diagnostic "+(typeof code==="string"&&/^(configuration|invalid_response|invalid_readiness|transport_or_invalid_response|upstream_http_[0-9]{3}(?:_[a-z_]+)?)$/.test(code)?code:"unavailable"));}
  const delivery=expect(checked,200,"protected Delivery health");

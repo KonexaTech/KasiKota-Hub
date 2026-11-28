@@ -36,6 +36,8 @@ jobs:
           node --check tests/verify-live-guest-order.mjs
           node --check tests/verify-browser-owner-login.mjs
           node --check worker/test/release-gates.integration.mjs
+          node --test tests/delivery-source-access-policy.test.mjs
+          node --check worker/scripts/configure-delivery-source-access.mjs
           node --test tests/staging-workflow-safety.test.mjs
           node --test tests/guest-staging-guard.test.mjs
           node --test tests/postmerge-integrity.test.mjs
