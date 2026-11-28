@@ -1,3 +1,4 @@
+import { deliveryHealth } from "./delivery-health.js";
 import { cyclingRouteDistance } from "./cycling-route.js";
 import { calculateDeliveryQuote } from "./delivery-quote-calculation.js";
 import { dispatchDelivery, deliveryTracking, deliveryCapabilities } from "./delivery-dispatch.js";
@@ -56,6 +57,10 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
     if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
     if(method==="GET"&&!deliveryRoute[1])return deliveryTracking(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
     return json({error:"Method not allowed"},405);
+  }
+  if(method==="GET"&&path==="/api/admin/delivery-health"){
+    if(!await isNeonAdmin(env,withDb,subject))return json({error:"Administrator required"},403);
+    return deliveryHealth(request,env);
   }
   if(method==="GET"&&path==="/api/me")return json({subject,admin:await isNeonAdmin(env,withDb,subject)});
   if(method==="GET"&&path==="/api/orders/mine")return json({orders:await withDb(env,async db=>(await db.query("SELECT id,order_number,shop_id,status,total_cents,created_at FROM kc_orders WHERE customer_subject=$1 ORDER BY created_at DESC LIMIT 100",[subject])).rows)});

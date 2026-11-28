@@ -86,6 +86,14 @@ const adminIdentity=expect(await call("/api/me","admin"),200,"verified admin ide
 if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subject===adminIdentity.subject)
  throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
 assertFixturePrincipals(fixtureConfig, ownerIdentity, adminIdentity);
+if(process.env.KOTA_TEST_VERIFY_DELIVERY_HEALTH==="true"){
+ const delivery=expect(await call("/api/admin/delivery-health","admin"),200,"protected Delivery health");
+ if(delivery.ok!==true||delivery.payments_enabled!==false||delivery.delivery_source_commit!==process.env.KOTA_TEST_EXPECTED_DELIVERY_SOURCE)throw Error("BLOCKED: Delivery health/source does not match the reviewed candidate.");
+ expect(await call("/api/admin/delivery-health","owner"),403,"owner denied Delivery health diagnostic");
+ expect(await call("/api/admin/delivery-health"),401,"anonymous denied Delivery health diagnostic");
+ console.log("PASS: LIVE Delivery protected health and exact source/schema readiness via existing server identity; application driver/admin acceptance remains separate.");
+}
+
 const access=expect(await call("/api/owner/access","owner"),200,"approved owner access");
 if(access.approved!==true)throw Error("Staging shop owner has not been approved by the administrator.");
 expect(await call("/api/owner/orders","admin"),403,"administrator denied owner orders");
