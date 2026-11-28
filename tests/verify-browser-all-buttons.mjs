@@ -28,6 +28,7 @@ let notifications=[
  {id:uuids.notif2,kind:"order_status",title:"Order update",body:"preparing",read_at:null}
 ];
 let dispatchEnabled=false;
+const shopEvents=[];
 let customerDeliveryAvailable=true;
 const calls=[];
 const authModule=[
@@ -95,6 +96,12 @@ function apiResponse(path,method,body){
   order={...order,status:"pending",fulfillment_type:body.fulfillmentType,customer_name:body.customerName,total_cents:menu[0].price_cents*body.items[0].quantity+(body.fulfillmentType==="delivery"?1500:0)};
   return {order};
  }
+ if(path==="/api/admin/shop-management")return {available:true};
+ if(path==="/api/admin/shops/"+uuids.shop+"/approval"&&method==="PATCH"){
+  assert.equal(body.expectedCurrentApproved,shop.approved);shop.approved=body.approved;
+  shopEvents.push({approved:body.approved,reason:body.reason,actor_subject:"fixture-admin",created_at:new Date().toISOString()});return {ok:true};
+ }
+ if(path==="/api/admin/shops/"+uuids.shop+"/approval-events")return {events:shopEvents};
  if(path==="/api/admin/overview")return {shopCount:1,approvedShopCount:1,applications:[{status:"pending",count:applications.filter(x=>x.status==="pending").length}],shops:[shop],commissionPaused:true,estimatedCommissionCents:0,collectedCommissionCents:null,commissionCollectionStatus:"Commission paused"};
  if(path==="/api/admin/shop-applications"&&method==="GET")return {applications};
  if(path.startsWith("/api/admin/shop-applications/")&&path.endsWith("/review")&&method==="PATCH"){
@@ -261,6 +268,17 @@ try{
  assert.match(await admin.locator("#openNotifications").innerText(),/Notifications/);
  await admin.locator("#closeNotifications").click();
  await admin.locator("#adminOverview").click();
+ await admin.getByRole('button',{name:/^Suspend shop for/}).waitFor();
+ admin.once('dialog',dialog=>dialog.accept('TEST suspension'));
+ await admin.getByRole('button',{name:/^Suspend shop for/}).click();
+ await admin.getByRole('button',{name:/^Restore approval for/}).waitFor();assert.equal(shop.approved,false);
+ admin.once('dialog',dialog=>dialog.accept('TEST restoration'));
+ await admin.getByRole('button',{name:/^Restore approval for/}).click();
+ await admin.getByRole('button',{name:/^Suspend shop for/}).waitFor();assert.equal(shop.approved,true);
+ await admin.getByRole('button',{name:/^View approval history for/}).click();
+ await admin.getByText(/TEST restoration.*fixture-admin/).waitFor();
+ await admin.locator('#adminOverview').click();
+
  await resultContains(admin,"Administrator dashboard loaded");
  await admin.locator("#applications").click();
  await resultContains(admin,"2 pending");
