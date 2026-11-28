@@ -58,6 +58,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.KOTA_STAGING_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.KOTA_STAGING_CLOUDFLARE_ACCOUNT_ID }}
           KOTA_STAGING_DATABASE_URL: ${{ secrets.KOTA_STAGING_DATABASE_URL }}
+          KOTA_ROUTING_API_KEY: ${{ secrets.KOTA_ROUTING_API_KEY }}
           KOTA_CF_ACCESS_CLIENT_ID: ${{ secrets.KOTA_CF_ACCESS_CLIENT_ID }}
           KOTA_CF_ACCESS_CLIENT_SECRET: ${{ secrets.KOTA_CF_ACCESS_CLIENT_SECRET }}
           KOTA_CF_ACCESS_SERVICE_TOKEN_ID: ${{ vars.KOTA_CF_ACCESS_SERVICE_TOKEN_ID }}
@@ -71,7 +72,7 @@ jobs:
           SECRET_FILE="$(mktemp "$RUNNER_TEMP/kota-worker-secrets.XXXXXXXX.json")"
           trap 'rm -f "$SECRET_FILE"' EXIT
           export SECRET_FILE
-          node -e 'require("node:fs").writeFileSync(process.env.SECRET_FILE,JSON.stringify({DATABASE_URL:process.env.KOTA_STAGING_DATABASE_URL}),{mode:0o600})'
+          node -e 'require("node:fs").writeFileSync(process.env.SECRET_FILE,JSON.stringify({DATABASE_URL:process.env.KOTA_STAGING_DATABASE_URL,...(process.env.KOTA_ROUTING_API_KEY?.trim()?{KOTA_ROUTING_API_KEY:process.env.KOTA_ROUTING_API_KEY}:{})}),{mode:0o600})'
           # Fixed target in versioned config. Existing protected Access and bindings are required.
           (cd worker && npx --no-install wrangler deploy --keep-vars --var "KOTA_SOURCE_COMMIT:$GITHUB_SHA" --secrets-file "$SECRET_FILE")
           rm -f "$SECRET_FILE"
