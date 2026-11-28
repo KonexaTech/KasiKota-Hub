@@ -1,3 +1,4 @@
+import {mountDeliveryProof} from "./delivery-proof-control.mjs";
 import {captureDeliveryLocation} from "./delivery-location.mjs";
 import { createAuthClient } from "https://esm.sh/@neon/auth@latest";
 import { parseMenuText, formatMenuText, planMenuChanges } from "./menu-text.mjs";
@@ -10,6 +11,7 @@ let requestId=null,menu=[],cart=[];
 let dashboardAccess=false;
 let ownerOrders=[];
 let loadOwnerOrders=async()=>{};
+let clearOwnerProof=()=>{};
 let loadAdminOrders=async()=>{};
 let loadAdminCommission=async()=>{};
 let refreshCustomerTracking=async()=>{};
@@ -17,6 +19,7 @@ const orderIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const lastTrackedOrderStorageKey="kota_connect_last_tracked_order_id";
 function rememberTrackedOrder(id){try{localStorage.setItem(lastTrackedOrderStorageKey,id)}catch{}}
 function showDashboardPanels(allowed){
+  if(!allowed)clearOwnerProof();
   dashboardAccess=Boolean(allowed);
   document.querySelectorAll('[data-restricted-panel]').forEach(panel=>{panel.hidden=!dashboardAccess});
   if(!dashboardAccess){
@@ -373,7 +376,9 @@ bind("saveMenu",async()=>{
   await viewOwnerMenu();
   out("Menu saved: "+desired.length+" available items; "+removed+" made unavailable. Existing order history preserved.");
 });
-let deliveryDispatchEnabled=false;
+let deliveryDispatchEnabled=false,deliveryProofEnabled=false;
+const pickupProof=mountDeliveryProof({after:$("orderItems"),label:"Show driver pickup code",purpose:"collection",currentOrder:()=>$("orderId").value.trim(),request:id=>api("/api/owner/orders/"+encodeURIComponent(id)+"/delivery-verification","POST",{})});
+clearOwnerProof=()=>pickupProof.update("",false);
 const deliveryButton=document.createElement("button");
 deliveryButton.type="button";deliveryButton.textContent="Request bicycle delivery";deliveryButton.hidden=true;
 deliveryButton.setAttribute("aria-label","Request bicycle delivery for selected ready order");
@@ -403,6 +408,7 @@ function updateOwnerOrderSelection(){
   const dropdown=$("ownerOrderSelect");
   dropdown.value=selected?.id||"";
   const allowed=selected?nextOwnerStatuses(selected):[];
+  pickupProof.update(id,dashboardAccess&&deliveryProofEnabled&&selected?.fulfillment_type==="delivery"&&selected?.status==="ready_for_collection");
   deliveryButton.hidden=!deliveryDispatchEnabled;
   deliveryButton.disabled=!deliveryDispatchEnabled||selected?.fulfillment_type!=="delivery"||!["ready_for_collection","out_for_delivery"].includes(selected?.status);
   const next=$("status");
@@ -417,7 +423,7 @@ loadOwnerOrders=async function(announce=true){
   const response=await api("/api/owner/orders");
   ownerOrders=Array.isArray(response.orders)?response.orders:[];
   deliveryDispatchEnabled=false;
-  try{deliveryDispatchEnabled=(await api("/api/owner/delivery-capabilities")).dispatch_enabled===true;}catch{}
+  try{const capabilities=await api("/api/owner/delivery-capabilities");deliveryDispatchEnabled=capabilities.dispatch_enabled===true;deliveryProofEnabled=capabilities.verification_enabled===true;}catch{deliveryProofEnabled=false;}
   const selectedId=$("orderId").value.trim();
   const picker=$("ownerOrderSelect");
   picker.replaceChildren(new Option("Select an incoming order",""),...ownerOrders.map(order=>
