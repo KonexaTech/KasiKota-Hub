@@ -27,6 +27,11 @@ on:
         type: boolean
         required: false
         default: false
+      verify_delivery_roles:
+        description: Verify real invited Delivery administrator and two approved bicycle-driver accounts; requires separate private credentials
+        type: boolean
+        required: false
+        default: false
 jobs:
   live-owner-admin:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/neon-only-cutover' && inputs.confirm_test_writes == true
@@ -47,6 +52,20 @@ jobs:
         run: |
           node --check worker/test/release-gates.integration.mjs
           node --check worker/test/prepare-staging-role-fixtures.mjs
+      - name: Verify actual private Delivery application roles before any TEST-shop writes
+        if: ${{ inputs.verify_delivery_roles }}
+        env:
+          DELIVERY_TEST_CONFIRM_PRIVATE_ROLES: 'true'
+          DELIVERY_TEST_EXPECTED_SOURCE: ${{ inputs.expected_delivery_source }}
+          DELIVERY_TEST_ACCESS_CLIENT_ID: ${{ secrets.DELIVERY_TEST_ACCESS_CLIENT_ID }}
+          DELIVERY_TEST_ACCESS_CLIENT_SECRET: ${{ secrets.DELIVERY_TEST_ACCESS_CLIENT_SECRET }}
+          DELIVERY_TEST_ADMIN_EMAIL: ${{ secrets.DELIVERY_TEST_ADMIN_EMAIL }}
+          DELIVERY_TEST_ADMIN_PASSWORD: ${{ secrets.DELIVERY_TEST_ADMIN_PASSWORD }}
+          DELIVERY_TEST_DRIVER_EMAIL: ${{ secrets.DELIVERY_TEST_DRIVER_EMAIL }}
+          DELIVERY_TEST_DRIVER_PASSWORD: ${{ secrets.DELIVERY_TEST_DRIVER_PASSWORD }}
+          DELIVERY_TEST_OTHER_DRIVER_EMAIL: ${{ secrets.DELIVERY_TEST_OTHER_DRIVER_EMAIL }}
+          DELIVERY_TEST_OTHER_DRIVER_PASSWORD: ${{ secrets.DELIVERY_TEST_OTHER_DRIVER_PASSWORD }}
+        run: node worker/test/private-delivery-roles.mjs
       - name: Prepare a fresh labelled TEST shop only when explicitly requested
         id: fresh_fixture
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_fresh_test_shop }}
