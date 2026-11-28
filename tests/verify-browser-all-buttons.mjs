@@ -38,7 +38,7 @@ const authModule=[
   '  getSession:async()=>({data:{user:state.signedIn?{email:state.email,emailVerified:true}:null},error:null}),',
   '  signIn:{email:async()=>{state.events.push("signIn");state.signedIn=true;return {data:{user:{email:state.email,emailVerified:true}},error:null}}},',
   '  signUp:{email:async()=>{state.events.push("signUp");return ok}},',
-  '  signOut:async()=>{state.events.push("signOut");if(state.failSignOut)return {error:{message:"fixture remote sign-out failure"}};state.signedIn=false;return ok},',
+  '  signOut:async()=>{state.events.push("signOut");if(state.failSignOut==="stale")return ok;if(state.failSignOut)return {error:{message:"fixture remote sign-out failure"}};state.signedIn=false;return ok},',
   '  forgetPassword:{emailOtp:async()=>{state.events.push("forgotPassword");return ok}},',
   '  emailOtp:{',
   '    sendVerificationOtp:async()=>{state.events.push("sendVerification");return ok},',
@@ -121,6 +121,10 @@ async function makePage(role){
  await page.addInitScript(()=>{window.confirm=()=>true;});
  await page.route("https://esm.sh/**",async route=>route.fulfill({status:200,contentType:"application/javascript",headers:{"access-control-allow-origin":"*"},body:authModule}));
  await page.route("**/auth/token",async route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({token:"abc.def.ghi"})}));
+ await page.route("**/auth/get-session",async route=>{
+  const signedIn=await page.evaluate(()=>globalThis.__kotaMockAuth?.signedIn===true);
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(signedIn?{user:{id:'fixture-session-user'}}:null)});
+ });
  await page.route("**/api/**",async route=>{
   const request=route.request(),url=new URL(request.url()),method=request.method();
   const body=request.postDataJSON?.()||{};
@@ -176,6 +180,9 @@ async function authActions(page,role){
  await page.locator("#signout").click();await resultContains(page,"Sign-out was not confirmed");
  assert.equal(await page.locator('[data-restricted-panel]:visible').count(),0);
  for(const id of ['password','newPassword','verificationCode','emailVerificationCode'])assert.equal(await page.locator('#'+id).inputValue(),'');
+ await page.evaluate(()=>{globalThis.__kotaMockAuth.failSignOut='stale';document.getElementById('result').textContent='TEST logout retry pending';});
+ await page.locator("#signout").click();await resultContains(page,"Sign-out was not confirmed");
+ assert.equal(await page.locator('[data-restricted-panel]:visible').count(),0);
  await page.evaluate(()=>{globalThis.__kotaMockAuth.failSignOut=false;});
  await page.locator("#signout").click();
  await resultContains(page,"Signed out");

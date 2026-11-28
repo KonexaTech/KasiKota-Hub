@@ -46,9 +46,13 @@ function clearAccountSecrets(){
 }
 async function confirmedSignOut(){
   clearAccountSecrets();showDashboardPanels(false);
-  const result=await auth.signOut();
-  if(result?.error)throw Error("Sign-out was not confirmed. Please retry signing out.");
-  await showIdentity();
+  try{await auth.signOut()}catch{}
+  try{
+    const response=await fetch(AUTH_URL+"/get-session",{credentials:"include",cache:"no-store",headers:{accept:"application/json"}});
+    const session=await response.json();
+    if(!response.ok||!(session===null||session&&Object.hasOwn(session,"user")&&session.user==null&&!session.error))throw Error("Session is still active or unavailable");
+  }catch{throw Error("Sign-out was not confirmed. Please retry signing out.");}
+  showAccountActions(false);$("identity").textContent="Not signed in";
 }
 const out=(message)=>{$("result").textContent=typeof message==="string"?message:JSON.stringify(message,null,2)};
 function required(id,label){const value=$(id)?.value?.trim();if(!value)throw Error(label+" is required");return value}

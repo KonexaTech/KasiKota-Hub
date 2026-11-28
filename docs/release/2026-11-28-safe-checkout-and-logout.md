@@ -26,8 +26,8 @@ Baseline: ffab51ae41a7b96de14cbdc299c0529744f2d5fb.
   remains available. The customer dropdown explains unavailability using the existing
   layout and shows normal approved pricing when configured delivery is available.
 - Clear password and verification inputs after successful sign-in and on sign-out.
-  Hide private panels while signing out; check the SDK error before acknowledging
-  success. Failed remote sign-out remains clearly unconfirmed and retryable. This
+  Hide private panels while signing out; confirm the server session is absent
+  before acknowledging success, even when an SDK reports success with stale state. Failed remote sign-out remains clearly unconfirmed and retryable. This
   is not a claim of immediate revocation of previously issued JWTs.
 - Select the exact fresh TEST shop card in live browser acceptance. Assert actual
   delivery availability and cleared form credentials. Correct mock request counters
