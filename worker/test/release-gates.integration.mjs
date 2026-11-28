@@ -87,7 +87,9 @@ if(ownerIdentity.admin!==false||adminIdentity.admin!==true||ownerIdentity.subjec
  throw Error("Staging account role isolation failed: use separate owner and admin accounts.");
 assertFixturePrincipals(fixtureConfig, ownerIdentity, adminIdentity);
 if(process.env.KOTA_TEST_VERIFY_DELIVERY_HEALTH==="true"){
- const delivery=expect(await call("/api/admin/delivery-health","admin"),200,"protected Delivery health");
+ const checked=await call("/api/admin/delivery-health","admin");
+ if(checked.status!==200){const code=checked.data?.diagnostic;console.log("FAIL: LIVE Delivery health diagnostic "+(typeof code==="string"&&/^(configuration|invalid_response|invalid_readiness|transport_or_invalid_response|upstream_http_[0-9]{3}(?:_[a-z_]+)?)$/.test(code)?code:"unavailable"));}
+ const delivery=expect(checked,200,"protected Delivery health");
  if(delivery.ok!==true||delivery.payments_enabled!==false||delivery.delivery_source_commit!==process.env.KOTA_TEST_EXPECTED_DELIVERY_SOURCE)throw Error("BLOCKED: Delivery health/source does not match the reviewed candidate.");
  expect(await call("/api/admin/delivery-health","owner"),403,"owner denied Delivery health diagnostic");
  expect(await call("/api/admin/delivery-health"),401,"anonymous denied Delivery health diagnostic");
