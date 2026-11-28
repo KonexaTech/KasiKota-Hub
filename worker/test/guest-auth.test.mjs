@@ -19,10 +19,10 @@ test("reject missing, malformed or short guest credentials",async()=>{
 });
 test("guest can only order, view their own order and track status",()=>{
  const id="123e4567-e89b-12d3-a456-426614174000";
- for(const [method,path] of [["POST","/api/orders"],["GET","/api/orders/mine"],["GET","/api/notifications"],["PATCH","/api/notifications/"+id+"/read"],["GET","/api/orders/"+id],["GET","/api/orders/"+id+"/items"],["GET","/api/orders/"+id+"/history"],["GET","/api/orders/"+id+"/delivery"]]){
+ for(const [method,path] of [["POST","/api/orders"],["POST","/api/orders/"+id+"/delivery-verification"],["GET","/api/orders/mine"],["GET","/api/notifications"],["PATCH","/api/notifications/"+id+"/read"],["GET","/api/orders/"+id],["GET","/api/orders/"+id+"/items"],["GET","/api/orders/"+id+"/history"],["GET","/api/orders/"+id+"/delivery"]]){
    assert.equal(guestRouteAllowed(method,path),true,method+" "+path);
  }
- for(const [method,path] of [["GET","/api/me"],["GET","/api/owner/orders"],["GET","/api/owner/shops"],["POST","/api/shop-applications"],["GET","/api/admin/orders"],["PATCH","/api/admin/shop-applications/"+id+"/review"],["PATCH","/api/owner/orders/"+id+"/status"],["POST","/api/orders/mine"],["GET","/api/orders/not-an-id"]]){
+ for(const [method,path] of [["GET","/api/me"],["POST","/api/owner/orders/"+id+"/delivery-verification"],["GET","/api/owner/orders"],["GET","/api/owner/shops"],["POST","/api/shop-applications"],["GET","/api/admin/orders"],["PATCH","/api/admin/shop-applications/"+id+"/review"],["PATCH","/api/owner/orders/"+id+"/status"],["POST","/api/orders/mine"],["GET","/api/orders/not-an-id"]]){
    assert.equal(guestRouteAllowed(method,path),false,method+" "+path);
  }
 });

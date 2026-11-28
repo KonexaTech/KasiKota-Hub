@@ -2,10 +2,11 @@
 // Never accept a guest credential for owner or administrator API routes.
 const orderId="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const orderRead=new RegExp("^/api/orders/"+orderId+"(?:/(?:items|history|delivery))?$","i");
+const orderProof=new RegExp("^/api/orders/"+orderId+"/delivery-verification$","i");
 const readNotification=new RegExp("^/api/notifications/"+orderId+"/read$","i");
 
 export function guestRouteAllowed(method,path){
-  return (method==="POST"&&path==="/api/orders") ||
+  return (method==="POST"&&(path==="/api/orders"||orderProof.test(path))) ||
     (method==="GET"&&(path==="/api/orders/mine"||path==="/api/notifications"||orderRead.test(path))) ||
     (method==="PATCH"&&readNotification.test(path));
 }

@@ -1,3 +1,4 @@
+import { deliveryProof } from "./delivery-proof.js";
 import { deliveryHealth } from "./delivery-health.js";
 import { cyclingRouteDistance } from "./cycling-route.js";
 import { calculateDeliveryQuote } from "./delivery-quote-calculation.js";
@@ -10,7 +11,7 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statuses=["pending","accepted","preparing","ready_for_collection","out_for_delivery","completed","rejected","delayed"];
 const next={pending:["accepted","rejected","delayed"],accepted:["preparing","delayed","rejected"],preparing:["ready_for_collection","out_for_delivery","delayed"],delayed:["accepted","rejected"],ready_for_collection:["completed"],out_for_delivery:["completed"]};
 function privateDeliveryAvailable(env,url){
-  return env.NEON_ONLY_MODE==="true"&&url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev"&&env.KOTA_STAGING_ROUTING_APPROVED==="true"&&env.KOTA_DELIVERY_ORDER_SYNC_ENABLED==="true"&&env.KOTA_STAGING_DISPATCH_RECOVERY_ENABLED==="true"&&env.DELIVERY_CALLBACKS_ENABLED==="true"&&typeof env.KOTA_ROUTING_API_KEY==="string"&&Boolean(env.KOTA_ROUTING_API_KEY.trim())&&typeof env.DELIVERY_CALLBACK_SECRET==="string"&&new TextEncoder().encode(env.DELIVERY_CALLBACK_SECRET).length>=32&&deliveryCapabilities(env).dispatch_enabled;
+  return env.NEON_ONLY_MODE==="true"&&url.hostname==="kota-connect-api-dev.siboniisozulu.workers.dev"&&env.KOTA_STAGING_ROUTING_APPROVED==="true"&&env.KOTA_STAGING_DELIVERY_PROOFS_ENABLED==="true"&&env.KOTA_DELIVERY_ORDER_SYNC_ENABLED==="true"&&env.KOTA_STAGING_DISPATCH_RECOVERY_ENABLED==="true"&&env.DELIVERY_CALLBACKS_ENABLED==="true"&&typeof env.KOTA_ROUTING_API_KEY==="string"&&Boolean(env.KOTA_ROUTING_API_KEY.trim())&&typeof env.DELIVERY_CALLBACK_SECRET==="string"&&new TextEncoder().encode(env.DELIVERY_CALLBACK_SECRET).length>=32&&deliveryCapabilities(env).dispatch_enabled;
 }
 async function readBody(request){try{return await request.json()}catch{return null}}
 export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
@@ -51,7 +52,10 @@ export async function neonApi(request,env,withDb,withDeliveryDb=withDb){
     });
     return json(access);
   }
-  if(method==="GET"&&path==="/api/owner/delivery-capabilities")return json(deliveryCapabilities(env));
+  if(method==="GET"&&path==="/api/owner/delivery-capabilities")return json({...deliveryCapabilities(env),verification_enabled:env.KOTA_STAGING_DELIVERY_PROOFS_ENABLED==="true"});
+  const proofRoute=/^\/api\/(owner\/)?orders\/([0-9a-f-]{36})\/delivery-verification$/.exec(path);
+  if(method==="POST"&&proofRoute&&uuid.test(proofRoute[2]))
+    return deliveryProof(request,env,withDeliveryDb,proofRoute[2].toLowerCase(),subject,proofRoute[1]?"collection":"handover");
   const deliveryRoute=/^\/api\/(owner\/)?orders\/([0-9a-f-]{36})\/delivery$/.exec(path);
   if(deliveryRoute&&uuid.test(deliveryRoute[2])){
     if(method==="POST"&&deliveryRoute[1])return dispatchDelivery(env,withDeliveryDb,deliveryRoute[2].toLowerCase(),subject);
