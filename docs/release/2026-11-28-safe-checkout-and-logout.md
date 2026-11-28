@@ -44,3 +44,17 @@ previous failed run remains recorded. No failures are hidden or skipped.
 No production, database/migration, identity-provider, signing, monetary, navigation
 or branding changes. Collection and configured delivery behavior are preserved;
 unverified automatic delivery stays unavailable until its prerequisites pass.
+
+## Follow-up actual browser evidence
+
+Run46105734327 passed real owner/admin API acceptance and guest browser checkout,
+then failed within the owner lifecycle. The browser attempted consecutive status
+actions after the saved-status label updated but before the existing bound action
+finished notification refresh and cleared its aria-busy marker. The application's
+duplicate-action guard deliberately ignores clicks while kcWorking is true.
+The browser now awaits action completion, asserts each actual PATCH returns200,
+and checks the persisted-status label for every transition. It uses the dialog's
+existing automatic order refresh rather than starting a second overlapping refresh,
+and records a distinct safe stage per status without exposing order data.
+No application behavior or security guard is changed. A new exact-source live run
+remains required; this correction alone does not establish browser PASS.

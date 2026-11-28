@@ -57,10 +57,17 @@ try{
  stage='guest-checkout';const submitted=guest.waitForResponse(r=>new URL(r.url()).origin===SITE&&new URL(r.url()).pathname==='/api/orders'&&r.request().method()==='POST');await guest.locator('#confirmOrder').click();const response=await submitted;assert.equal(response.status(),201);
  const order=(await response.json()).order;assert.equal(order.total_cents,item.price_cents);assert.match(order.id,/^[a-f0-9-]{36}$/i);
  await guest.waitForFunction(id=>document.getElementById('orderId')?.value===id,order.id);
- stage='owner-pickup-lifecycle';await owner.locator('#openCustomerOrders').click();await owner.locator('#myOrders').click();await owner.locator('#ownerOrderSelect').selectOption(order.id);
+ stage='owner-order-load';await owner.locator('#openCustomerOrders').click();
+ await owner.waitForFunction(id=>[...document.querySelectorAll('#ownerOrderSelect option')].some(option=>option.value===id),order.id);
+ await owner.locator('#ownerOrderSelect').selectOption(order.id);
  for(const status of ['accepted','preparing','ready_for_collection','completed']){
-  await owner.locator('#status').selectOption(status);await owner.locator('#updateStatus').click();
+  stage='owner-status-'+status;
+  await owner.waitForFunction(()=>!document.getElementById('updateStatus')?.hasAttribute('aria-busy'));
+  await owner.locator('#status').selectOption(status);
+  const saved=owner.waitForResponse(r=>new URL(r.url()).origin===SITE&&new URL(r.url()).pathname==='/api/owner/orders/'+order.id+'/status'&&r.request().method()==='PATCH');
+  await owner.locator('#updateStatus').click();assert.equal((await saved).status(),200);
   await owner.waitForFunction(s=>document.getElementById('currentOrderStatus')?.textContent.includes('Current saved status: '+s.replaceAll('_',' ')),status);
+  await owner.waitForFunction(()=>!document.getElementById('updateStatus')?.hasAttribute('aria-busy'));
  }
  stage='guest-refresh-persistence';await guest.reload({waitUntil:'domcontentloaded'});assert.equal(await guest.locator('#orderId').inputValue(),order.id);await guest.locator('#track').click();await guest.waitForFunction(()=>document.getElementById('trackingStatus')?.textContent.includes('completed'));
  const admin=await login('admin');stage='admin-order-oversight';await admin.locator('#openCustomerOrders').click();await admin.waitForFunction(number=>document.getElementById('adminOrderList')?.textContent.includes(number),order.order_number);
